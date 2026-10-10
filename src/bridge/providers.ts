@@ -16,6 +16,8 @@ export interface GenCore {
   heightfield(seed: number, w: number, h: number, features: number, octaves: number, out: Float32Array): void;
   /** Fill `out` (length n) with 1D noise in [0,1]. */
   noise1D(seed: number, n: number, out: Float32Array): void;
+  /** Render `n` mono synth-voice samples into `out` ([-1,1]). Pure DSP. */
+  dspVoice(seed: number, n: number, sampleRate: number, out: Float32Array): void;
   /** True once the backend is ready (WASM compiled/instantiated). */
   readonly ready: boolean;
 }

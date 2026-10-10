@@ -1,6 +1,7 @@
 // native/gen/gen.cpp — seeded 2D simplex noise + fbm. Public domain style,
 // written for the engine (Gustavson-style simplex, reimplemented).
 #include "gen.hpp"
+#include <cmath>
 
 namespace xrgen {
 namespace {
@@ -117,6 +118,37 @@ void noise1d(unsigned seed, int n, float* out) {
   }
 }
 
+// Deterministic integer hash (stable across platforms, no <random> needed).
+static unsigned dsp_hash(unsigned x) {
+  x ^= x >> 16; x *= 0x7feb352d; x ^= x >> 15; x *= 0x846ca68b; x ^= x >> 16;
+  return x;
+}
+
+void dsp_voice(unsigned seed, int n, int sampleRate, float* out) {
+  // A-minor bass movement, 8th notes at 96 BPM. Note choice is hashed from
+  // (seed, noteIndex), so the line is fixed per seed on every platform.
+  // Phase runs in double precision: float32 phase audibly drifts over a
+  // loop, and doubles keep the TS mirror sample-accurate.
+  static const double kScale[8] =
+      {55.0, 65.41, 73.42, 82.41, 98.0, 110.0, 130.81, 146.83};
+  const double noteDur = 60.0 / 96.0 / 2.0;
+  const double sr = (double)sampleRate;
+  double phase = 0.0;
+  for (int i = 0; i < n; i++) {
+    double t = i / sr;
+    int note = (int)(t / noteDur);
+    unsigned h = dsp_hash(seed + (unsigned)note * 2654435761u);
+    double freq = kScale[h % 8];
+    double nt = t - (double)note * noteDur;
+    phase += freq / sr;
+    double s = std::sin(phase * 6.283185307179586);
+    double sq = std::tanh(2.5 * s);            // square-ish body
+    double env = std::exp(-nt * 6.0);          // pluck decay
+    double grit = ((h >> 8) % 1000) / 1000.0 - 0.5; // deterministic grit
+    out[i] = (float)((sq * 0.6 + s * 0.3 + grit * 0.1) * env * 0.5);
+  }
+}
+
 } // namespace xrgen
 
 // ---- WASM C ABI (also usable from native hosts) ----
@@ -141,6 +173,11 @@ void xr_noise1d(unsigned seed, int n, float* out) {
 EMSCRIPTEN_KEEPALIVE
 float xr_fbm2(float x, float y, unsigned seed, int octaves) {
   return xrgen::fbm2(x, y, seed, octaves);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void xr_dsp_voice(unsigned seed, int n, int sampleRate, float* out) {
+  xrgen::dsp_voice(seed, n, sampleRate, out);
 }
 
 } // extern "C"

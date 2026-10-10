@@ -5,7 +5,7 @@ import {
   SceneNode, Mesh, Light, Camera, Script,
   terrain, sphere, torus, buildMaterial,
   Renderer, WebXRProvider, InlineProvider,
-  SpatialAudio, createGenCore, mulberry32, TsMlProvider, loadStyleWeights,
+  SpatialAudio, createGenCore, mulberry32, TsMlProvider, loadStyleWeights, ScorePlayer,
   fromAxisAngle, quatMultiply,
   type GenCore, type XRSessionHandle, type XRMode, type FrameCallback, type RenderView,
 } from '../src/index.js';
@@ -151,13 +151,61 @@ async function main(): Promise<void> {
   pipelineRow('renderer (WebGL2)', 'TypeScript');
   pipelineRow('scripting provider', 'C# (.NET)');
   pipelineRow('XR session', 'TypeScript (WebXR)');
-  pipelineRow('audio / music', 'TypeScript');
+  pipelineRow('audio: pad voice', 'TypeScript');
+  pipelineRow('audio: DSP bass', gen.languageTag);
+  pipelineRow('audio: chords + melody', 'Python');
+  pipelineRow('audio: arp + hats', 'C# (.NET)');
+  pipelineRow('audio: sparkle pings', 'Swift (stub)');
+  pipelineRow('audio: sub pulse', 'Kotlin (stub)');
   pipelineRow('visionOS provider', 'Swift (stub)');
   pipelineRow('Android XR provider', 'Kotlin (stub)');
 
-  // ---- Renderer / audio ----
+  // ---- Renderer / polyglot audio ----
+  // Every language gets a voice in the mix: TS pad, C++ DSP bass, Python
+  // chords+melody, C# arp+hats. Swift/Kotlin ship conformant composers for
+  // their native targets (stubs in the browser demo).
   const renderer = new Renderer(canvas);
   const audio = new SpatialAudio();
+  const actx = audio.getContext();
+  const bus = audio.getDestination();
+  const scorePlayers: ScorePlayer[] = [];
+  const loadScore = async (url: string): Promise<void> => {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const player = new ScorePlayer(actx, bus);
+      player.load(await res.json());
+      scorePlayers.push(player);
+    } catch {
+      // A missing score just leaves that voice silent.
+    }
+  };
+  await loadScore('gen/python-score.json');
+  await loadScore('gen/csharp-score.json');
+
+  // C++ DSP voice: render one 10 s loop (matches the scores' loop_dur).
+  let voiceSrc: AudioBufferSourceNode | null = null;
+  const startVoice = (): void => {
+    if (voiceSrc) return;
+    const sr = actx.sampleRate;
+    const n = Math.floor(sr * 10);
+    const data = new Float32Array(n);
+    gen.dspVoice(20261010, n, sr, data);
+    const buf = actx.createBuffer(1, n, sr);
+    buf.getChannelData(0).set(data);
+    voiceSrc = actx.createBufferSource();
+    voiceSrc.buffer = buf;
+    voiceSrc.loop = true;
+    const g = actx.createGain();
+    g.gain.value = 0.5;
+    voiceSrc.connect(g);
+    g.connect(bus);
+    voiceSrc.start();
+  };
+  const stopVoice = (): void => {
+    try { voiceSrc?.stop(); } catch { /* already stopped */ }
+    voiceSrc = null;
+  };
   const onResize = () => renderer.resize(canvas.clientWidth, canvas.clientHeight);
   window.addEventListener('resize', onResize);
   onResize();
@@ -242,6 +290,13 @@ async function main(): Promise<void> {
     const on = btnAudio.textContent === 'Sound on';
     audio.resume();
     audio.music.setEnabled(on);
+    if (on) {
+      for (const p of scorePlayers) p.start();
+      startVoice();
+    } else {
+      for (const p of scorePlayers) p.stop();
+      stopVoice();
+    }
     btnAudio.textContent = on ? 'Sound off' : 'Sound on';
   };
 }

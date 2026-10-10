@@ -20,4 +20,8 @@ void heightfield(unsigned seed, int w, int h, float features, int octaves, float
 // Fill `out` (n) with 1D fbm noise in [0, 1] (sampled along x at fixed y).
 void noise1d(unsigned seed, int n, float* out);
 
+// Render `n` mono samples of a seeded synth voice into `out` ([-1, 1]).
+// A plucky sequenced bass: deterministic per seed, pure DSP, no samples.
+void dsp_voice(unsigned seed, int n, int sampleRate, float* out);
+
 } // namespace xrgen

@@ -20,3 +20,5 @@ export { WebXRProvider } from './xr/webxr.js';
 export { InlineProvider } from './xr/inline.js';
 export { SpatialAudio, BuiltinPadDriver } from './audio/spatial.js';
 export type { MusicDriver } from './audio/spatial.js';
+export { ScorePlayer, validateScore } from './audio/driver.js';
+export type { AudioEvent, ScoreDoc, ScoreKind } from './audio/driver.js';

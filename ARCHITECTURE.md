@@ -30,8 +30,8 @@ replace assets**. So v1 is polyglot from day one, not TypeScript-only:
 | Language | v1 role — real, working, in the demo |
 |---|---|
 | TypeScript | Host: scene graph, procedural materials, WebGL2 renderer, WebXR sessions, orchestration. Runs everywhere with a browser (Quest browser, desktop, phone AR). |
-| C++ → WASM | Heavy procedural generation compiled to WebAssembly and called live from TypeScript: seeded noise fields, terrain heightfields, geometry synthesis. Measurably faster than JS, proving why the number-crunching lives here. |
-| Python | ML generation: the seeded style MLP that reshapes the demo's terrain, latent sampling, biome mixture weights. Ships as `python/xrgen` (stdlib-only) with a JSON-lines bridge every language can spawn; TypeScript mirrors the forward pass bit-exactly so Python-generated weights evaluate anywhere. |
+| C++ → WASM | Heavy procedural generation compiled to WebAssembly and called live from TypeScript: seeded noise fields, terrain heightfields, geometry synthesis. Audio: renders the seeded DSP bass voice (`xr_dsp_voice`) straight to samples. Measurably faster than JS, proving why the number-crunching lives here. |
+| Python | ML generation: the seeded style MLP that reshapes the demo's terrain, latent sampling, biome mixture weights. Audio: composes the chords + melody score (`xrgen/audio.py`). Ships as `python/xrgen` (stdlib-only) with a JSON-lines bridge every language can spawn; TypeScript mirrors the forward pass bit-exactly so Python-generated weights evaluate anywhere. |
 | C# | Scripting provider implementing the engine's `ScriptProvider` interface (Unity-bridgeable later). Compiles as a .NET library in v1; wired to a runtime host post-v1. |
 | Swift | visionOS provider stub implementing the `SessionProvider` interface against RealityKit types. Compiles where the Swift toolchain exists; full compositor wiring post-v1. |
 | Kotlin | Android XR provider stub implementing `SessionProvider` against OpenXR mobile bindings. Same deal: compiles now, wires later. |

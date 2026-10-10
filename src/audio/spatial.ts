@@ -95,6 +95,16 @@ export class SpatialAudio {
     void this.ctx.resume();
   }
 
+  /** The shared WebAudio context, so every language's audio renders together. */
+  getContext(): AudioContext {
+    return this.ctx;
+  }
+
+  /** The master bus every driver connects through. */
+  getDestination(): AudioNode {
+    return this.master;
+  }
+
   /** Move the listener (usually the camera). */
   setListener(pos: Vec3, fwd: Vec3, up: Vec3): void {
     const t = this.ctx.currentTime;

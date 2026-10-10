@@ -18,6 +18,7 @@ from xrgen.ml import (
     make_style_weights,
     stylize_forward,
 )
+from xrgen.audio import AudioComposer
 
 P = MlGenerationProvider()
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -76,6 +77,51 @@ class TestMlProvider(unittest.TestCase):
         self.assertEqual(len(w), 4)
         self.assertAlmostEqual(sum(w), 1.0, places=9)
         self.assertTrue(all(v > 0 for v in w))
+
+    def test_compose_deterministic(self):
+        c = AudioComposer()
+        a = c.compose(20261010)
+        b = c.compose(20261010)
+        self.assertEqual(a, b)
+
+    def test_compose_schema(self):
+        doc = AudioComposer().compose(7)
+        self.assertEqual(doc["language"], "Python")
+        self.assertGreater(doc["loop_dur"], 0)
+        self.assertTrue(len(doc["events"]) > 0)
+        kinds = {"tone", "pad", "bass", "noise"}
+        prev_t = -1.0
+        for e in doc["events"]:
+            self.assertIn(e["kind"], kinds)
+            self.assertGreater(e["freq"], 0)
+            self.assertGreater(e["dur"], 0)
+            self.assertTrue(0.0 <= e["gain"] <= 1.0)
+            self.assertGreaterEqual(e["t"], prev_t, "events must be time-sorted")
+            self.assertLess(e["t"], doc["loop_dur"], "events must fit the loop")
+            prev_t = e["t"]
+
+    def test_compose_varies_by_seed(self):
+        a = AudioComposer().compose(1)["events"]
+        b = AudioComposer().compose(2)["events"]
+        self.assertNotEqual(
+            [e["freq"] for e in a], [e["freq"] for e in b])
+
+    def test_bridge_compose_op(self):
+        proc = subprocess.Popen(
+            [sys.executable, BRIDGE],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            text=True, bufsize=1,
+        )
+        try:
+            proc.stdin.write(json.dumps({"op": "compose", "params": {"seed": 7}}) + "\n")
+            proc.stdin.flush()
+            res = json.loads(proc.stdout.readline())
+            self.assertTrue(res["ok"])
+            self.assertEqual(res["result"]["language"], "Python")
+            self.assertTrue(len(res["result"]["events"]) > 0)
+        finally:
+            proc.stdin.close()
+            proc.wait(timeout=10)
 
     def test_bridge_roundtrip(self):
         """The JSON protocol every other language will speak actually works."""

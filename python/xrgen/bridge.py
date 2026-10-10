@@ -21,18 +21,21 @@ import sys
 
 try:
     from .ml import MlGenerationProvider
+    from .audio import AudioComposer
 except ImportError:  # allow running as a plain script: python3 xrgen/bridge.py
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from xrgen.ml import MlGenerationProvider
+    from xrgen.audio import AudioComposer
 
 PROVIDER = MlGenerationProvider()
+COMPOSER = AudioComposer()
 
 
 def _handle(req: dict):
     op = req.get("op")
     p = req.get("params", {}) or {}
     if op == "ping":
-        return {"language": PROVIDER.language_tag, "ops": ["ping", "heightfield", "latent", "style_weights", "stylize", "biomes"]}
+        return {"language": PROVIDER.language_tag, "ops": ["ping", "heightfield", "latent", "style_weights", "stylize", "biomes", "compose"]}
     if op == "heightfield":
         return PROVIDER.heightfield(p["seed"], p["w"], p["h"], p["features"], p["octaves"])
     if op == "latent":
@@ -43,6 +46,8 @@ def _handle(req: dict):
         return PROVIDER.stylize(p["heights"], p["w"], p["h"], p["style_seed"], p.get("amount", 0.45))
     if op == "biomes":
         return PROVIDER.biomes(p["seed"], p["n"])
+    if op == "compose":
+        return COMPOSER.compose(p["seed"], p.get("bars", 4), p.get("bpm", 96.0))
     raise ValueError(f"unknown op: {op}")
 
 

@@ -9,3 +9,5 @@ dotnet/**/obj/
 kotlin/**/build/
 kotlin/**/.gradle/
 swift/**/*.o
+__pycache__/
+*.pyc
