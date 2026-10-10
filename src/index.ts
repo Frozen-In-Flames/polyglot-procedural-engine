@@ -1,0 +1,20 @@
+// xr-engine public surface (v1).
+export * from './math/vec.js';
+export * from './math/mat.js';
+export { fromAxisAngle, toMat4, slerp, qIdentity, multiply as quatMultiply } from './math/quat.js';
+export type { Quat } from './math/quat.js';
+export { SceneNode } from './scene/node.js';
+export type { Component } from './scene/node.js';
+export { Mesh, Light, Camera, Script } from './scene/components.js';
+export type { Geometry, Material, LightKind } from './scene/components.js';
+export * from './geo/rng.js';
+export * from './geo/parametric.js';
+export * from './geo/terrain.js';
+export * from './material/shader.js';
+export * from './bridge/providers.js';
+export { TsGenCore, WasmGenCore, createGenCore } from './bridge/wasm.js';
+export { Renderer } from './render/renderer.js';
+export { WebXRProvider } from './xr/webxr.js';
+export { InlineProvider } from './xr/inline.js';
+export { SpatialAudio, BuiltinPadDriver } from './audio/spatial.js';
+export type { MusicDriver } from './audio/spatial.js';

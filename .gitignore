@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dist-demo/
+/tmp/
+*.log
+.DS_Store
+dotnet/**/bin/
+dotnet/**/obj/
+kotlin/**/build/
+kotlin/**/.gradle/
+swift/**/*.o

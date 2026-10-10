@@ -1,0 +1,1 @@
+{"description":"Personal procedural VR/AR/MR/XR engine. Zero asset files: everything generated in code.","devDependencies":{"typescript":"^5.6.0","vite":"^6.0.0"},"name":"xr-engine","private":true,"scripts":{"build":"tsc","demo":"vite","test":"node --test dist-test/run.js"},"type":"module","version":"0.1.0"}
