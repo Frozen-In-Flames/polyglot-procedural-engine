@@ -19,6 +19,13 @@ interface GLGeometry {
   indexCount: number;
   boundRadius: number;
   boundCenter: [number, number, number];
+  /** For dynamic geometries: GPU buffers + last uploaded version. */
+  dynamic?: {
+    posBuf: WebGLBuffer;
+    normBuf: WebGLBuffer;
+    uvBuf: WebGLBuffer;
+    version: number;
+  };
 }
 
 function compileShader(gl: WebGL2RenderingContext, type: number, src: string): WebGLShader {
@@ -57,7 +64,7 @@ export class Renderer {
     const gl = this.gl;
     const program = gl.createProgram()!;
     gl.attachShader(program, compileShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER));
-    gl.attachShader(program, compileShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_TEMPLATE(mat.helpers, mat.body)));
+    gl.attachShader(program, compileShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_TEMPLATE(mat.helpers, mat.body, mat.unlit ?? false)));
     // Fixed attribute locations so VAOs can be shared across programs.
     gl.bindAttribLocation(program, 0, 'aPos');
     gl.bindAttribLocation(program, 1, 'aNormal');
@@ -91,18 +98,20 @@ export class Renderer {
     const gl = this.gl;
     const vao = gl.createVertexArray()!;
     gl.bindVertexArray(vao);
+    const usage = g.dynamic ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW;
     const mkBuf = (data: Float32Array, loc: number, size: number) => {
       const buf = gl.createBuffer()!;
       gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-      gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+      gl.bufferData(gl.ARRAY_BUFFER, data, usage);
       gl.enableVertexAttribArray(loc);
       gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 0, 0);
+      return buf;
     };
     // Attribute locations are fixed by compile order in getProgram; bind
     // generically: query from any compiled program, else assume 0,1,2.
-    mkBuf(g.positions, 0, 3);
-    mkBuf(g.normals, 1, 3);
-    mkBuf(g.uvs, 2, 2);
+    const posBuf = mkBuf(g.positions, 0, 3);
+    const normBuf = mkBuf(g.normals, 1, 3);
+    const uvBuf = mkBuf(g.uvs, 2, 2);
     const ibo = gl.createBuffer()!;
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, g.indices, gl.STATIC_DRAW);
@@ -121,8 +130,27 @@ export class Renderer {
       if (d > r) r = d;
     }
     gg = { vao, indexCount: g.indices.length, boundRadius: r, boundCenter: [cx, cy, cz] };
+    if (g.dynamic) {
+      gg.dynamic = { posBuf, normBuf, uvBuf, version: g.version ?? 0 };
+    }
     this.geometries.set(g, gg);
     return gg;
+  }
+
+  /** Re-upload a dynamic geometry's buffers when its version changed. */
+  private syncDynamic(g: Geometry, gg: GLGeometry): void {
+    const dyn = gg.dynamic;
+    if (!dyn || !g.dynamic) return;
+    const v = g.version ?? 0;
+    if (v === dyn.version) return;
+    const gl = this.gl;
+    gl.bindBuffer(gl.ARRAY_BUFFER, dyn.posBuf);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, g.positions);
+    gl.bindBuffer(gl.ARRAY_BUFFER, dyn.normBuf);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, g.normals);
+    gl.bindBuffer(gl.ARRAY_BUFFER, dyn.uvBuf);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, g.uvs);
+    dyn.version = v;
   }
 
   /** Collect renderable meshes + lights. Exported for tests/debug. */
@@ -166,8 +194,9 @@ export class Renderer {
       for (const mesh of meshes) {
         const prog = this.getProgram(mesh.material);
         const geo = this.getGeometry(mesh.geometry);
-        // Frustum cull: bounding sphere vs clip space.
-        if (!this.sphereInFrustum(geo, mesh.node!.worldMatrix)) continue;
+        this.syncDynamic(mesh.geometry, geo);
+        // Frustum cull: bounding sphere vs clip space (skipped for noCull).
+        if (!mesh.geometry.noCull && !this.sphereInFrustum(geo, mesh.node!.worldMatrix)) continue;
         gl.useProgram(prog.program);
         gl.bindVertexArray(geo.vao);
         const u = prog.uniforms;

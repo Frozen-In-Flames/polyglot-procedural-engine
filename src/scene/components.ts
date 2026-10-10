@@ -10,10 +10,19 @@ export interface Geometry {
   indices: Uint32Array;
   /** Which language module generated this geometry (for the pipeline overlay). */
   generatedBy: string;
+  /** Dynamic geometries (particles, etc.) re-upload their buffers per frame.
+   *  Set true and bump `version` after writing new positions. */
+  dynamic?: boolean;
+  /** Increment after mutating positions/normals/uvs of a dynamic geometry. */
+  version?: number;
+  /** Skip frustum culling when true (e.g. world-spanning particle clouds). */
+  noCull?: boolean;
 }
 
 export interface Material {
   name: string;
+  /** Skip lighting, output albedo directly. */
+  unlit?: boolean;
   /** GLSL functions for file scope (may be empty). */
   helpers: string;
   /** GLSL statements for the top of main(): must declare `vec3 albedo`.

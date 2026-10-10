@@ -6,6 +6,8 @@ import {
   terrain, sphere, torus, buildMaterial,
   Renderer, WebXRProvider, InlineProvider,
   SpatialAudio, createGenCore, mulberry32, TsMlProvider, loadStyleWeights, ScorePlayer,
+  ParticleSystem, particleGeometry, writeParticles, skyDome, rock, scatterRocks,
+  type Collider, type Geometry,
   fromAxisAngle, quatMultiply,
   type GenCore, type XRSessionHandle, type XRMode, type FrameCallback, type RenderView,
 } from '../src/index.js';
@@ -67,6 +69,23 @@ class Bob extends Script {
   }
 }
 
+/** Drives a ParticleSystem: emit, step the physics, rewrite the mesh. */
+class ParticleDriver extends Script {
+  constructor(
+    private sys: ParticleSystem,
+    private geo: Geometry,
+    private size: number,
+    private emit: (s: ParticleSystem) => void,
+    private collider?: Collider,
+  ) { super(); }
+  update(dt: number): void {
+    this.emit(this.sys);
+    this.sys.step(Math.min(dt, 1 / 30), this.collider);
+    writeParticles(this.geo, this.sys, this.size);
+    this.geo.version = (this.geo.version ?? 0) + 1;
+  }
+}
+
 async function main(): Promise<void> {
   setStatus('loading generation core...');
   const factory = await wasmFactory();
@@ -99,15 +118,18 @@ async function main(): Promise<void> {
   } catch {
     // Terrain still renders from the C++ heights; the style pass is skipped.
   }
+  // Named sampler: shared by the terrain mesh, the physics collider, and rocks.
+  const sampleHeight = (x: number, z: number): number => {
+    const fx = Math.min(SEG - 1, Math.max(0, Math.round(((x / 70) + 0.5) * (SEG - 1))));
+    const fz = Math.min(SEG - 1, Math.max(0, Math.round(((z / 70) + 0.5) * (SEG - 1))));
+    return heights[fz * SEG + fx] * 7;
+  };
+  const terrainCollider: Collider = { heightAt: (x, z) => sampleHeight(x, z) };
   const ground = new SceneNode('ground');
   ground.addComponent(new Mesh(
     terrain({
       size: 70, segments: SEG - 1, height: 7,
-      sampler: (x, z) => {
-        const fx = Math.min(SEG - 1, Math.max(0, Math.round(((x / 70) + 0.5) * (SEG - 1))));
-        const fz = Math.min(SEG - 1, Math.max(0, Math.round(((z / 70) + 0.5) * (SEG - 1))));
-        return heights[fz * SEG + fx];
-      },
+      sampler: (x, z) => sampleHeight(x, z) / 7,
       generatedBy: gen.languageTag,
     }),
     buildMaterial({ baseColor: [0.16, 0.32, 0.22], effects: ['heightRamp', 'noise'], generatedBy: 'TypeScript' }),
@@ -141,6 +163,56 @@ async function main(): Promise<void> {
   sun.addComponent(sunLight);
   root.addChild(sun);
 
+  // Sky dome: gradient + hashed stars, no textures. Unlit.
+  const sky = new SceneNode('sky');
+  sky.addComponent(new Mesh(
+    skyDome(600, 'TypeScript'),
+    buildMaterial({ baseColor: [0, 0, 0], effects: ['sky'], generatedBy: 'TypeScript', unlit: true }),
+  ));
+  root.addChild(sky);
+
+  // Rocks: noise-displaced, seeded scatter resting on the terrain.
+  const rockMat = buildMaterial({ baseColor: [0.38, 0.36, 0.33], effects: ['noise'], generatedBy: 'TypeScript' });
+  const rockGeos = [rock(11, 1), rock(77, 1), rock(1234, 1)];
+  for (const r of scatterRocks(4242, { count: 42, area: 30, minScale: 0.35, maxScale: 1.5 })) {
+    const node = new SceneNode('rock').setPosition(r.x, sampleHeight(r.x, r.z) - 0.15, r.z);
+    node.scale = [r.scale, r.scale, r.scale];
+    node.rotation = fromAxisAngle([0, 1, 0], r.rotY);
+    node.addComponent(new Mesh(rockGeos[r.seed % rockGeos.length], rockMat));
+    root.addChild(node);
+  }
+
+  // Physics: ember risers from the gate (buoyant) and falling motes that
+  // bounce on the terrain collider.
+  const emberSys = new ParticleSystem(9001, { max: 420, gravity: 1.6, drag: 0.7 });
+  const emberGeo = particleGeometry(420, 'TypeScript');
+  const emberMat = buildMaterial({ baseColor: [1.0, 0.42, 0.1], effects: [], generatedBy: 'TypeScript', unlit: true });
+  const emberNode = new SceneNode('embers');
+  emberNode.addComponent(new Mesh(emberGeo, emberMat));
+  emberNode.addComponent(new ParticleDriver(
+    emberSys, emberGeo, 0.09,
+    (s) => s.burst(0, 4.6, -10, 2.2, 0.7, 2.2, 3.2, 0.5, 3),
+  ));
+  root.addChild(emberNode);
+
+  const moteSys = new ParticleSystem(1337, { max: 320, gravity: -9.8, drag: 0.05, restitution: 0.55 });
+  const moteGeo = particleGeometry(320, 'TypeScript');
+  const moteMat = buildMaterial({ baseColor: [0.65, 0.85, 1.0], effects: [], generatedBy: 'TypeScript', unlit: true });
+  const moteNode = new SceneNode('motes');
+  moteNode.addComponent(new Mesh(moteGeo, moteMat));
+  const moteRnd = mulberry32(555);
+  moteNode.addComponent(new ParticleDriver(
+    moteSys, moteGeo, 0.06,
+    (s) => {
+      for (let k = 0; k < 2; k++) {
+        s.spawn((moteRnd() - 0.5) * 60, 15 + moteRnd() * 8, (moteRnd() - 0.5) * 60,
+          0, -1 - moteRnd() * 2, 0, 14);
+      }
+    },
+    terrainCollider,
+  ));
+  root.addChild(moteNode);
+
   const camNode = new SceneNode('camera').setPosition(0, 7, 20);
   const camera = new Camera(16 / 9);
   camNode.addComponent(camera);
@@ -162,6 +234,9 @@ async function main(): Promise<void> {
   pipelineRow('audio: sub pulse', 'Kotlin (stub)');
   pipelineRow('visionOS provider', 'Swift (stub)');
   pipelineRow('Android XR provider', 'Kotlin (stub)');
+  pipelineRow('physics: particles', 'TypeScript');
+  pipelineRow('sky dome', 'TypeScript');
+  pipelineRow('rocks', 'TypeScript');
 
   // ---- Renderer / polyglot audio ----
   // Every language gets a voice in the mix: TS pad, C++ DSP bass, Python
