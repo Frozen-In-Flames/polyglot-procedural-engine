@@ -1,6 +1,7 @@
 {
   "description": "Personal procedural VR/AR/MR/XR engine. Zero asset files: everything generated in code.",
   "devDependencies": {
+    "@types/node": "^26.6.5",
     "typescript": "^5.6.0",
     "vite": "^6.0.0"
   },
@@ -9,8 +10,9 @@
   "scripts": {
     "build": "tsc",
     "demo": "vite",
-    "test": "node --test dist-test/run.js"
+    "test": "node --test dist-test/test/*.test.js",
+    "pretest": "tsc --outDir dist-test --rootDir . --module nodenext --moduleResolution nodenext --target es2020 --lib es2020,dom,dom.iterable --strict --skipLibCheck test/audio.test.ts test/core.test.ts test/physics.test.ts test/wasm.test.ts test/inverse.test.ts"
   },
   "type": "module",
-  "version": "0.2.0"
+  "version": "0.3.0"
 }

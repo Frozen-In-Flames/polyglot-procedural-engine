@@ -7,6 +7,7 @@ import type { RenderView } from '../bridge/providers.js';
 import type { SceneNode } from '../scene/node.js';
 import { Mesh, Light, Camera, type Geometry, type Material } from '../scene/components.js';
 import { VERTEX_SHADER, FRAGMENT_TEMPLATE } from '../material/shader.js';
+import { GBUFFER_VERTEX, GBUFFER_FRAGMENT, type GBufferData } from './gbuffer.js';
 
 interface GLProgram {
   program: WebGLProgram;
@@ -170,16 +171,8 @@ export class Renderer {
   render(root: SceneNode, camera: Camera, camNode: SceneNode, views: RenderView[], time: number): void {
     const gl = this.gl;
     const { meshes, lights } = this.collect(root);
-    const dir = lights.find((l) => l.kind === 'directional');
-    // Light direction in world space (from the light node's orientation).
-    let lx = -0.4, ly = -1, lz = -0.25, lc: [number, number, number] = [1, 1, 1];
-    if (dir && dir.node) {
-      const m = dir.node.worldMatrix;
-      lx = m[8]; ly = m[9]; lz = m[10];
-      const il = 1 / (Math.sqrt(lx * lx + ly * ly + lz * lz) || 1);
-      lx *= il; ly *= il; lz *= il;
-      lc = [dir.color[0] * dir.intensity, dir.color[1] * dir.intensity, dir.color[2] * dir.intensity];
-    }
+    const { dir: ldir, color: lc } = this.lighting(lights);
+    const [lx, ly, lz] = ldir;
     const camPos: [number, number, number] = [camNode.worldMatrix[12], camNode.worldMatrix[13], camNode.worldMatrix[14]];
 
     gl.clearColor(0.02, 0.03, 0.06, 1);
@@ -211,12 +204,125 @@ export class Renderer {
           const loc = gl.getUniformLocation(prog.program, name);
           if (!loc) continue;
           if (typeof val === 'number') gl.uniform1f(loc, val);
-          else if (val.length === 3) gl.uniform3f(loc, val[0], val[1], val[2]);
+          else if (Array.isArray(val)) {
+            if (val.length === 2) gl.uniform2f(loc, val[0], val[1]);
+            else if (val.length === 3) gl.uniform3f(loc, val[0], val[1], val[2]);
+            else if (val.length === 4) gl.uniform4f(loc, val[0], val[1], val[2], val[3]);
+            else gl.uniform1fv(loc, val);
+          }
         }
         gl.drawElements(gl.TRIANGLES, geo.indexCount, gl.UNSIGNED_INT, 0);
       }
     }
     gl.bindVertexArray(null);
+  }
+
+  /** Directional light in world space + effective color. Shared by the
+   *  main render and the foundry G-buffer capture so both agree. */
+  private lighting(lights: Light[]): { dir: [number, number, number]; color: [number, number, number] } {
+    const dir = lights.find((l) => l.kind === 'directional');
+    let lx = -0.4, ly = -1, lz = -0.25;
+    let lc: [number, number, number] = [1, 1, 1];
+    if (dir && dir.node) {
+      const m = dir.node.worldMatrix;
+      lx = m[8]; ly = m[9]; lz = m[10];
+      const il = 1 / (Math.sqrt(lx * lx + ly * ly + lz * lz) || 1);
+      lx *= il; ly *= il; lz *= il;
+      lc = [dir.color[0] * dir.intensity, dir.color[1] * dir.intensity, dir.color[2] * dir.intensity];
+    }
+    return { dir: [lx, ly, lz], color: lc };
+  }
+
+  /** Foundry-only G-buffer capture for the V3 inverse pipeline.
+   *
+   *  NOT part of the hot render path: call it explicitly, once per asset,
+   *  offline. Renders UV/depth, normals, and shading-without-albedo to
+   *  float targets and reads them back for python/xrgen/inverse.py.
+   *  Requires EXT_color_buffer_float. Throws a clear error without it.
+   */
+  captureGBuffer(root: SceneNode, camera: Camera, camNode: SceneNode, view: RenderView): GBufferData {
+    const gl = this.gl;
+    if (!gl.getExtension('EXT_color_buffer_float')) {
+      throw new Error('captureGBuffer requires EXT_color_buffer_float');
+    }
+    const W = this.canvas.width, H = this.canvas.height;
+    const { meshes, lights } = this.collect(root);
+    const { dir: ldir, color: lc } = this.lighting(lights);
+    const camPos: [number, number, number] = [camNode.worldMatrix[12], camNode.worldMatrix[13], camNode.worldMatrix[14]];
+
+    // Compile the G-buffer program.
+    const program = gl.createProgram()!;
+    const compile = (type: number, src: string) => {
+      const sh = gl.createShader(type)!;
+      gl.shaderSource(sh, src);
+      gl.compileShader(sh);
+      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+        throw new Error('G-buffer shader compile failed: ' + gl.getShaderInfoLog(sh));
+      }
+      gl.attachShader(program, sh);
+    };
+    compile(gl.VERTEX_SHADER, GBUFFER_VERTEX);
+    compile(gl.FRAGMENT_SHADER, GBUFFER_FRAGMENT);
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      throw new Error('G-buffer program link failed: ' + gl.getProgramInfoLog(program));
+    }
+    const uni = (n: string) => gl.getUniformLocation(program, n);
+    const uModel = uni('uModel'), uView = uni('uView'), uProj = uni('uProj');
+    const uLightDir = uni('uLightDir'), uLightColor = uni('uLightColor');
+    const uCamPos = uni('uCamPos'), uUnlit = uni('uUnlit');
+
+    // Three RGBA32F targets.
+    const fb = gl.createFramebuffer()!;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    const texs: WebGLTexture[] = [];
+    for (let i = 0; i < 3; i++) {
+      const tex = gl.createTexture()!;
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, W, H, 0, gl.RGBA, gl.FLOAT, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, tex, 0);
+      texs.push(tex);
+    }
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2]);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+      throw new Error('G-buffer framebuffer incomplete');
+    }
+
+    gl.viewport(0, 0, W, H);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.useProgram(program);
+    gl.uniformMatrix4fv(uView, false, view.view);
+    gl.uniformMatrix4fv(uProj, false, view.proj);
+    gl.uniform3f(uLightDir, ldir[0], ldir[1], ldir[2]);
+    gl.uniform3f(uLightColor, lc[0], lc[1], lc[2]);
+    gl.uniform3f(uCamPos, camPos[0], camPos[1], camPos[2]);
+    for (const mesh of meshes) {
+      const geo = this.getGeometry(mesh.geometry);
+      this.syncDynamic(mesh.geometry, geo);
+      gl.bindVertexArray(geo.vao);
+      gl.uniformMatrix4fv(uModel, false, mesh.node!.worldMatrix);
+      gl.uniform1f(uUnlit, mesh.material.unlit ? 1 : 0);
+      gl.drawElements(gl.TRIANGLES, geo.indexCount, gl.UNSIGNED_INT, 0);
+    }
+
+    const read = (attachment: number) => {
+      const out = new Float32Array(W * H * 4);
+      gl.readBuffer(attachment);
+      gl.readPixels(0, 0, W, H, gl.RGBA, gl.FLOAT, out);
+      return out;
+    };
+    const uvDepth = read(gl.COLOR_ATTACHMENT0);
+    const normal = read(gl.COLOR_ATTACHMENT1);
+    const shading = read(gl.COLOR_ATTACHMENT2);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.deleteFramebuffer(fb);
+    for (const t of texs) gl.deleteTexture(t);
+    gl.deleteProgram(program);
+    return { width: W, height: H, uvDepth, normal, shading };
   }
 
   private sphereInFrustum(geo: GLGeometry, model: Mat4): boolean {

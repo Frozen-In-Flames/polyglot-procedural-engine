@@ -2,7 +2,7 @@
 // No texture files: every visual is math evaluated per-pixel.
 import type { Material } from '../scene/components.js';
 
-export type EffectKind = 'noise' | 'fresnel' | 'grid' | 'heightRamp' | 'pulse' | 'sky';
+export type EffectKind = 'noise' | 'fresnel' | 'grid' | 'heightRamp' | 'pulse' | 'sky' | 'distill';
 
 export interface MaterialSpec {
   baseColor: [number, number, number];
@@ -21,6 +21,49 @@ float xg_noise(vec2 p){
   vec2 u = f * f * (3.0 - 2.0 * f);
   return mix(mix(xg_hash(i), xg_hash(i + vec2(1,0)), u.x),
              mix(xg_hash(i + vec2(0,1)), xg_hash(i + vec2(1,1)), u.x), u.y);
+}
+`;
+
+// Distilled detail: the V3 inverse-rendering foundry (python/xrgen/inverse.py)
+// fits this exact formula to recovered albedo, so a super-resolved frame's
+// detail lives in these uniforms as pure math. No textures, no ML at runtime.
+// Agreement with the float64 Python reference is tolerance-checked (highp),
+// not bit-exact; the TS float64 reference distillDetail() in
+// src/bridge/distill.ts IS bit-exact with the Python and is unit-tested.
+const DISTILL_GLSL = `
+uniform highp vec2 uDistillSeed;
+uniform highp float uDistillScale;
+uniform highp float uDistillW[6];
+uniform highp float uDistillBias;
+uniform highp float uDistillOctaves;
+// Polynomial cell hash (Hoskins-style): no transcendental functions, so the
+// float64 Python reference and the TS reference agree bit-exactly and the
+// float32 GPU evaluation stays close. Do not swap in a sin-hash here.
+float xg_hhash(vec2 p){
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+float xg_dnoise(vec2 p){
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  float a = xg_hhash(i);
+  float b = xg_hhash(i + vec2(1.0, 0.0));
+  float c = xg_hhash(i + vec2(0.0, 1.0));
+  float d = xg_hhash(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+float xg_distill(vec2 uv){
+  highp vec2 p = uv * uDistillScale + uDistillSeed;
+  highp float total = 0.0;
+  highp float freq = 1.0;
+  for (int o = 0; o < 6; o++) {
+    highp float on = step(float(o), uDistillOctaves - 1.0);
+    total += on * uDistillW[o] * xg_dnoise(p * freq);
+    freq *= 2.03;
+  }
+  return uDistillBias + total;
 }
 `;
 
@@ -53,6 +96,19 @@ export function buildMaterial(spec: MaterialSpec): Material {
       case 'pulse':
         uniforms.uTime = 0;
         body += `  albedo *= 0.85 + 0.15 * sin(uTime * 2.0 + vWorldPos.x * 0.8 + vWorldPos.z * 0.6);\n`;
+        break;
+      case 'distill':
+        // V3 foundry output. Uniforms are set from the distillation
+        // bundle by applyDistillationBundle() in src/bridge/distill.ts.
+        // Defaults are the identity (bias 1, no detail) so a material
+        // built without a bundle still renders.
+        helpers += DISTILL_GLSL;
+        uniforms.uDistillSeed = [0, 0];
+        uniforms.uDistillScale = 24;
+        uniforms.uDistillW = [0, 0, 0, 0, 0, 0];
+        uniforms.uDistillBias = 1;
+        uniforms.uDistillOctaves = 4;
+        body += `  albedo *= xg_distill(vUv);\n`;
         break;
       case 'sky': {
         helpers += NOISE_GLSL;

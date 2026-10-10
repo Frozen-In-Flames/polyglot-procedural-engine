@@ -1,6 +1,7 @@
 node_modules/
 dist/
 dist-demo/
+dist-test/
 /tmp/
 *.log
 .DS_Store

@@ -3,6 +3,55 @@
 All notable changes to the xr-engine. The live demo at
 https://frozen-in-flames.github.io/xr-engine/ tracks the latest release.
 
+## [0.3.0] — V3 (2026-10-10)
+
+Inverse rendering: distill super-resolved frames into procedural math.
+Two-sided design: the foundry runs once, offline; the runtime keeps zero
+dependencies on NVIDIA, Google Colab, DLSS, or any ML framework.
+
+### Added
+- `python/xrgen/inverse.py`: foundry module (stdlib-only). `splat_to_uv()`
+  reprojects screen pixels into texture space (nearest-depth wins);
+  `strip_lighting()` recovers albedo as observed / shading in linear space;
+  `fit_material()` / `fit_height_style()` distill recovered detail into the
+  engine's own procedural params by least squares. `make_bundle()` emits a
+  plain JSON bundle, the only thing that crosses to the runtime.
+- Distillation quality gate: R² (variance explained). Bad fits are recorded
+  as failed, never silently shipped.
+- `src/render/gbuffer.ts` + `Renderer.captureGBuffer()`: foundry-only
+  UV/depth/normal/shading capture, flag-gated, out of the hot path.
+- New `distill` material effect in the shader builder.
+- `src/bridge/distill.ts`: bundle validation, `applyDistillationBundle()`,
+  and a float64 TypeScript reference with a bit-exact Python mirror check.
+- `INVERSE.md`: the two-sided design, the zero-dependency invariant, and
+  both execution paths (own GPU is the official foundry; free Colab is the
+  fallback).
+- `docs/colab/v3-distillation.ipynb`: Colab fallback notebook.
+- README: V3 section stating the execution paths in plain words.
+
+### Design notes
+- Detail function uses a polynomial hash, not sin-hash: `Math.sin` differs
+  by 1 ulp between CPython and V8, which would break the bit-exact mirror.
+- The fitter takes source detail params as input (known: the engine
+  rendered the frame). Seed discovery by random search was tested and
+  fails; foreign inputs use a canonical seed and the R² score reports the
+  mismatch honestly.
+- Base color / bias confound is documented: reconstruction is exact,
+  parameter identity is not promised.
+
+### Verification
+- Python: 40/40 pass (26 new inverse-rendering tests, all synthetic/CPU).
+  Also green on Colab's free T4 (15 GB VRAM).
+- TypeScript: 28/28 pass, including the bit-exact Python↔TS mirror check.
+- `tsc` and `vite build` clean. End-to-end foundry on synthetic data:
+  R² = 0.908, passed; hard-edge checker correctly flagged as failed fit.
+
+### Not yet verified
+- Real DLSS frame capture (needs an RTX setup).
+- The G-buffer GL code path (no WebGL on the build machine; type-checked
+  only).
+- Neural inverse rendering remains optional future work, not the core path.
+
 ## [0.2.0] — V2 (2026-10-10)
 
 Engine depth: physics core, richer procedural generation.

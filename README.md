@@ -57,3 +57,18 @@ The demo scene renders a procedural world (terrain, gate, orb field, generative
 pad audio) with **no asset files on disk or network** — no models, no textures,
 no audio files. The only binary fetched is `gen.wasm`, which is compiled code,
 not content.
+
+## v3: inverse rendering (in development)
+
+V3 distills super-resolved frames (DLSS or any reconstruction tech) into the
+engine's procedural math, once, so assets never need remastering. See
+`INVERSE.md` for the full design.
+
+Be clear on the execution paths:
+
+- **Official path: your own computer's GPU.** That is the real foundry.
+- **Fallback: free Colab** (`docs/colab/v3-distillation.ipynb`). It proves the
+  concept for anyone without a high-end machine. Nothing more.
+- **The engine itself depends on neither.** Once the math is in, there is no
+  more DLSS, no NVIDIA, no Google, no ML framework at runtime. The player
+  gets pure math: zero asset dependence.
