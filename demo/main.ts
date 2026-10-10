@@ -29,12 +29,15 @@ function setStatus(msg: string): void {
   statusEl.textContent = msg;
 }
 
-/** WASM factory when the emcc build is present (demo/public/gen/), else undefined. */
+/** WASM factory when the emcc build is present (demo/public/gen/), else undefined.
+ *  Tries the import directly instead of a HEAD probe: works on http(s),
+ *  file://, and subpath hosting alike. */
 async function wasmFactory(): Promise<(() => Promise<unknown>) | undefined> {
   try {
-    const head = await fetch('gen/gen.js', { method: 'HEAD' });
-    if (!head.ok) return undefined;
-    const genUrl = ['/gen', 'gen.js'].join('/');
+    // Absolute URL built at runtime (bundlers leave it alone), resolved
+    // against the page — not the bundle in assets/ — so it works on
+    // http(s), file://, and subpath hosting alike.
+    const genUrl = new URL('gen/' + 'gen.js', document.baseURI).href;
     const m = await import(/* @vite-ignore */ genUrl);
     const factory = (m.default ?? m) as () => Promise<unknown>;
     return factory;
