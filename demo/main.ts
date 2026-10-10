@@ -5,7 +5,7 @@ import {
   SceneNode, Mesh, Light, Camera, Script,
   terrain, sphere, torus, buildMaterial,
   Renderer, WebXRProvider, InlineProvider,
-  SpatialAudio, createGenCore, mulberry32,
+  SpatialAudio, createGenCore, mulberry32, TsMlProvider, loadStyleWeights,
   fromAxisAngle, quatMultiply,
   type GenCore, type XRSessionHandle, type XRMode, type FrameCallback, type RenderView,
 } from '../src/index.js';
@@ -73,10 +73,29 @@ async function main(): Promise<void> {
   // ---- Scene ----
   const root = new SceneNode('root');
 
-  // Terrain: heights computed by the generation core (C++ WASM when present).
+  // Terrain: heights computed by the generation core (C++ WASM when present),
+  // then reshaped by the Python ML style provider's seeded MLP.
   const SEG = 110;
   const heights = new Float32Array(SEG * SEG);
   gen.heightfield(1337, SEG, SEG, 6, 4, heights);
+  let styleTag = 'Python (unavailable)';
+  try {
+    const ml = new TsMlProvider();
+    const weights = await loadStyleWeights('gen/python-style.json');
+    for (let j = 0; j < SEG; j++) {
+      const v = j / (SEG - 1);
+      for (let i = 0; i < SEG; i++) {
+        const u = i / (SEG - 1);
+        const idx = j * SEG + i;
+        const h = heights[idx];
+        const s = ml.stylizeForward([h, u, v], weights);
+        heights[idx] = h * 0.55 + s * 0.45;
+      }
+    }
+    styleTag = ml.languageTag;
+  } catch {
+    // Terrain still renders from the C++ heights; the style pass is skipped.
+  }
   const ground = new SceneNode('ground');
   ground.addComponent(new Mesh(
     terrain({
@@ -126,6 +145,7 @@ async function main(): Promise<void> {
 
   // ---- Pipeline overlay: the visible proof ----
   pipelineRow('terrain heights', gen.languageTag);
+  pipelineRow('terrain style (ML)', styleTag);
   pipelineRow('geometry', 'TypeScript');
   pipelineRow('materials / shaders', 'TypeScript');
   pipelineRow('renderer (WebGL2)', 'TypeScript');

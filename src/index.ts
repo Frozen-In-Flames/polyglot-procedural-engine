@@ -13,6 +13,8 @@ export * from './geo/terrain.js';
 export * from './material/shader.js';
 export * from './bridge/providers.js';
 export { TsGenCore, WasmGenCore, createGenCore } from './bridge/wasm.js';
+export { TsMlProvider, loadStyleWeights } from './bridge/python.js';
+export type { MlProvider, MlWeights } from './bridge/python.js';
 export { Renderer } from './render/renderer.js';
 export { WebXRProvider } from './xr/webxr.js';
 export { InlineProvider } from './xr/inline.js';

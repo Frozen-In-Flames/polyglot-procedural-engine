@@ -1,0 +1,4 @@
+# xrgen is standard-library only by design: no installs, no wheels, no
+# version conflicts. It has to embed next to C++ and spawn next to C#
+# without a packaging story. If you add a dependency, you owe every other
+# language a justification.

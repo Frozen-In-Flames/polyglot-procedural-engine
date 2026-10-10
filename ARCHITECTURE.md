@@ -16,6 +16,7 @@ scales to every platform natively.
 |---|---|
 | TypeScript | v1 core: scene, procedural gen, WebXR runtime (this slice) |
 | C++ | Performance core: software rasterizer fallback, DSP, physics |
+| Python | ML core: trained generative models for content (terrain/style/texture synthesis), CV tooling for AR; serves parameters to every native target |
 | C# | Unity bridge: run engine scenes inside Unity for console/PC targets |
 | Swift | visionOS native target (RealityKit/compositor bridge) |
 | Kotlin | Android XR native target (OpenXR loader, Quest-class devices) |
@@ -30,6 +31,7 @@ replace assets**. So v1 is polyglot from day one, not TypeScript-only:
 |---|---|
 | TypeScript | Host: scene graph, procedural materials, WebGL2 renderer, WebXR sessions, orchestration. Runs everywhere with a browser (Quest browser, desktop, phone AR). |
 | C++ → WASM | Heavy procedural generation compiled to WebAssembly and called live from TypeScript: seeded noise fields, terrain heightfields, geometry synthesis. Measurably faster than JS, proving why the number-crunching lives here. |
+| Python | ML generation: the seeded style MLP that reshapes the demo's terrain, latent sampling, biome mixture weights. Ships as `python/xrgen` (stdlib-only) with a JSON-lines bridge every language can spawn; TypeScript mirrors the forward pass bit-exactly so Python-generated weights evaluate anywhere. |
 | C# | Scripting provider implementing the engine's `ScriptProvider` interface (Unity-bridgeable later). Compiles as a .NET library in v1; wired to a runtime host post-v1. |
 | Swift | visionOS provider stub implementing the `SessionProvider` interface against RealityKit types. Compiles where the Swift toolchain exists; full compositor wiring post-v1. |
 | Kotlin | Android XR provider stub implementing `SessionProvider` against OpenXR mobile bindings. Same deal: compiles now, wires later. |
