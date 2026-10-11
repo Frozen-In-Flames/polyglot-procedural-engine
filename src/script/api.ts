@@ -6,12 +6,11 @@
 // graph is closed and frozen; see sandbox.ts and runtime.ts.
 //
 // Architectural law (Aries, Oct 10, 2026): "local generation, global
-// coherence". Step 2 (world composition) will add a READ-ONLY shared
+// coherence". Step 2 (world composition) added the READ-ONLY shared
 // environmental-field query to this API — a seeded global "wind" field that
 // scripted entities sample as (position, time) -> vector, so independently
-// built zones read as one coherent ocean. That query is NOT implemented here;
-// Caps is deliberately extensible so it can be added later without breaking
-// the shape (see the reserved `field` slot in the Caps interface).
+// built zones read as one coherent ocean — plus the six per-domain foundry
+// writes (field.write.*). See the `field` namespace on Caps.
 
 /** JSON-shaped values only: the only data that may cross the script boundary. */
 export type JSONValue =
@@ -63,12 +62,14 @@ export interface EntityHandle {
 
 /** Procedural world state the script owns: entities + a key/value store. */
 export interface WorldCaps {
-  /** Spawn an entity. Options are plain data. */
+  /** Spawn an entity. Options are plain data. `portal` links the spawned
+   *  entity as a first-class portal (step 2). */
   spawn(name: string, opts?: {
     position?: [number, number, number];
     rotation?: [number, number, number, number];
     scale?: [number, number, number];
     tag?: string;
+    portal?: PortalSpawnOpts;
   }): EntityHandle;
   /** Find a live entity by exact name. */
   find(name: string): EntityHandle | null;
@@ -146,11 +147,12 @@ export const ALL_CAPABILITIES: readonly CapabilityName[] = Object.freeze([
 /**
  * The ONE object a script ever receives. Frozen. Every member is frozen.
  *
- * Reserved extension point: step 2 adds the environmental-field query here
- * as a `field` namespace — read-only sampling for lower tiers, and the six
- * per-domain write controls (field.write.scene/genesis/biome/tempo/light/
- * presence) for the endgame foundry tier. New members are additive
- * namespaces — the existing shape never changes.
+ * Step 2 (world composition) added the environmental-field query as the
+ * `field` namespace: read-only sampling of the shared seeded global "wind"
+ * field for lower tiers (`field.read`), and the six per-domain write
+ * controls (`field.write.scene/genesis/biome/tempo/light/presence`) for
+ * the endgame foundry tier. New members are additive namespaces — the
+ * existing shape never changes.
  */
 export interface Caps {
   /** Capabilities this script instance was granted (see CapabilityName). */
@@ -161,7 +163,61 @@ export interface Caps {
   readonly events: EventCaps;
   readonly audio: AudioCaps;
   readonly log: (msg: string) => void;
-  // Step 2 (world composition): readonly environmental-field query goes here.
+  /** Shared environmental field (step 2). Read-only wind sampling for the
+   *  lower tiers; the six per-domain foundry writes for the top tier. */
+  readonly field: FieldCaps;
+}
+
+/**
+ * Portal link options for world.spawn (step 2). A script spawns/links a
+ * portal as a first-class entity through its `world` capability:
+ *   caps.world.spawn('my-gate', { position, tag: 'portal',
+ *     portal: { targetZone: 'mote-hollow', targetSpawn: [x, y, z],
+ *               radius: 3, label: '...' } })
+ * The handoff itself is driven engine-side by the world loader; the link
+ * is stored on the entity record, never exposed to the script.
+ */
+export interface PortalSpawnOpts {
+  /** Id of the zone this portal leads to. */
+  targetZone: string;
+  /** Zone-local spawn point in the TARGET zone. */
+  targetSpawn: [number, number, number];
+  /** Trigger radius in world units (default 3). */
+  radius?: number;
+  /** Human label (default ''). */
+  label?: string;
+}
+
+/**
+ * The shared environmental ("wind") field namespace (step 2).
+ *
+ * THE WIND CORRECTION (Aries, Oct 10, 2026): the generative math is
+ * inherently unseeable and must NEVER be visualized — not as numbers,
+ * overlays, hints, or highlight effects. This query returns a vector for
+ * SIMULATION (advecting embers, leaning grass, clustering motes); what the
+ * player sees is always the world's texture, never the field.
+ */
+export interface FieldCaps {
+  /**
+   * Read-only sample of the shared global wind field:
+   * (position, time) -> vector. Deterministic from the global seed.
+   * Requires the 'field.read' grant. Returns a fresh frozen triple.
+   */
+  wind(position: [number, number, number], time: number): [number, number, number];
+  /**
+   * The live six-domain parameters (a copy). Requires 'field.read'.
+   * Shape: { globalSeed, wind, scene, genesis, biome, tempo, light,
+   * presence } — plain JSON.
+   */
+  params(): JSONValue;
+  /**
+   * Foundry write: patch one domain's live parameters and trigger
+   * downstream re-derivation of the composed world. Requires the matching
+   * 'field.write.<domain>' grant. Returns the new full parameter snapshot.
+   * `patch` keys are validated per domain; unknown keys throw.
+   */
+  set(domain: 'scene' | 'genesis' | 'biome' | 'tempo' | 'light' | 'presence',
+      patch: { [k: string]: JSONValue }): JSONValue;
 }
 
 /** A script definition: what an external developer writes. */

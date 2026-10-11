@@ -70,11 +70,25 @@ cooperation. That visible pipeline IS the v1 deliverable, as much as the world i
   clock, entity spawn/query/transform, procedural world-state store, event
   bus, one-way audio sink. Sealed entity handles, graduated capability grants
   (tiered authorship; top tier decomposes into six per-domain
-  `field.write.*` grants, one per engine language), reserved `field`
-  namespace for step 2's environmental-field query. Threat model:
+  `field.write.*` grants, one per engine language), and the `field`
+  namespace: read-only shared wind-field sampling (`field.read`) plus the
+  six per-domain foundry writes. Threat model:
   capability-closure, not malicious-actor containment. Reference scripts
   port the C# `ScriptProvider` behaviors (float bob+spin; bit-exact arp+hats
   composition).
+- **world** (V4 step 2) — world composition over one shared seeded wind
+  field. Zone descriptors are plain JSON (seed + generator params + bounds +
+  wind weights + portals), validated on load; per-zone wind derives from the
+  global field, never a per-zone seed. `GlobalField` holds the field plus the
+  six live domain parameters (scene/genesis/biome/tempo/light/presence — the
+  foundry levers, one per language) with revision-tracked downstream
+  re-derivation. `ComposedWorld` stitches independently authored zones via
+  first-class portal entities (handoff preserves entity identity and state).
+  Terrain carries the wind's texture through the `shimmer` hook (directional
+  ripple + normal lean): terrain is the water. Scripts sample the field via
+  `caps.field.wind` (`field.read` grant) and write domains via
+  `caps.field.set` (`field.write.*` grants); `world.spawn` accepts portal
+  link options.
 
 **C++ (`native/`)** — `gen/` procedural generation core: seeded simplex noise,
 heightfield synthesis, mesh synthesis (grid/radial). Compiled to WASM for v1

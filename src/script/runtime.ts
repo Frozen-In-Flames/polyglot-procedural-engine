@@ -11,13 +11,17 @@
 
 import { mulberry32 } from '../geo/rng.js';
 import { SceneNode } from '../scene/node.js';
+import { GlobalField } from '../world/field.js';
+import type { PortalLink } from '../world/portals.js';
+import type { FieldDomain } from '../world/types.js';
 import type {
   Caps, CapabilityName, EntityBackend, EntityHandle, EventCaps, JSONValue, NoteEvent,
-  ScriptDef, TimeCaps, TransformData, WorldCaps, AudioCaps,
+  ScriptDef, TimeCaps, TransformData, WorldCaps, AudioCaps, FieldCaps,
+  PortalSpawnOpts,
 } from './api.js';
 import { ALL_CAPABILITIES } from './api.js';
 import {
-  copyJson, deepFreeze, exportTransform, sanitizeNote, sanitizeTransform, checkFinite,
+  copyJson, deepFreeze, exportTransform, sanitizeNote, sanitizeTransform, sanitizeVec3, checkFinite,
 } from './sandbox.js';
 
 /** Mix a runtime seed with a script name into a 32-bit stream seed. */
@@ -115,6 +119,8 @@ interface EntityRecord {
   tag: string;
   alive: boolean;
   handlers: Map<string, Set<Handler>>;
+  /** Portal link when this entity is a first-class portal (step 2). */
+  portal: PortalLink | null;
 }
 
 interface ScriptInstance {
@@ -126,6 +132,13 @@ interface ScriptInstance {
 export interface RuntimeOptions {
   onLog?: (scriptName: string, msg: string) => void;
   onError?: (scriptName: string, err: unknown) => void;
+  /**
+   * The shared environmental field (step 2). When omitted, the runtime owns
+   * one built from the runtime seed — every script's `field` namespace then
+   * samples the same global wind. Hosts composing a world pass their
+   * GlobalField here so scripts and zones share one ocean.
+   */
+  field?: GlobalField;
 }
 
 export class ScriptRuntime {
@@ -142,6 +155,8 @@ export class ScriptRuntime {
   private nowT = 0;
   private lastDt = 0;
   private opts: RuntimeOptions;
+  /** The shared environmental field behind caps.field (step 2). */
+  readonly field: GlobalField;
   /** Errors caught from script update() calls. update() continues past them. */
   readonly errors: { script: string; err: unknown }[] = [];
 
@@ -152,6 +167,7 @@ export class ScriptRuntime {
   ) {
     this.backend = backend ?? new MemoryEntityBackend();
     this.opts = opts ?? {};
+    this.field = this.opts.field ?? new GlobalField(undefined, seed);
   }
 
   // ---- loading ----
@@ -238,6 +254,59 @@ export class ScriptRuntime {
 
   get pendingAudio(): number { return this.audioSink.length; }
 
+  // ---- host-side entity access (world loader, portals) ----
+  //
+  // These bypass capability grants: they are for the ENGINE side of the
+  // wall (the world loader spawning portals, the handoff moving travelers),
+  // never for scripts. Scripts keep using caps.world.
+
+  /**
+   * Host-side spawn. Used by the world loader for portal entities (and any
+   * other engine-owned entity). Returns the engine entity id.
+   */
+  spawnHost(
+    name: string,
+    initial: TransformData,
+    opts?: { tag?: string; portal?: PortalSpawnOpts },
+  ): number {
+    if (typeof name !== 'string' || !name) throw new Error('host: spawn needs a name');
+    const clean = sanitizeTransform(initial);
+    const id = this.backend.spawn(name, clean);
+    this.entities.set(id, {
+      id, name, tag: opts?.tag ?? '', alive: true,
+      handlers: new Map(),
+      portal: this.sanitizePortalOpts(opts?.portal),
+    });
+    return id;
+  }
+
+  /** Host-side: live entities as plain records (id, name, tag). */
+  hostEntities(): { id: number; name: string; tag: string }[] {
+    const out: { id: number; name: string; tag: string }[] = [];
+    for (const rec of this.entities.values()) {
+      if (rec.alive) out.push({ id: rec.id, name: rec.name, tag: rec.tag });
+    }
+    return out;
+  }
+
+  /** Host-side: the portal link on an entity, if it is a portal. */
+  portalLink(id: number): PortalLink | null {
+    const rec = this.entities.get(id);
+    return rec && rec.alive ? rec.portal : null;
+  }
+
+  hostGetTransform(id: number): TransformData | null {
+    const rec = this.entities.get(id);
+    if (!rec || !rec.alive) return null;
+    return this.backend.getTransform(id);
+  }
+
+  hostSetTransform(id: number, t: TransformData): void {
+    const rec = this.entities.get(id);
+    if (!rec || !rec.alive) return;
+    this.backend.setTransform(id, sanitizeTransform(t));
+  }
+
   // ---- internals ----
 
   private reportError(name: string, err: unknown): void {
@@ -265,6 +334,7 @@ export class ScriptRuntime {
         rotation?: [number, number, number, number];
         scale?: [number, number, number];
         tag?: string;
+        portal?: PortalSpawnOpts;
       }) {
         require('world.spawn');
         if (typeof wname !== 'string' || !wname) throw new Error('script: spawn needs a name');
@@ -277,6 +347,7 @@ export class ScriptRuntime {
         const rec: EntityRecord = {
           id, name: wname, tag: opts?.tag ?? '', alive: true,
           handlers: new Map(),
+          portal: rt.sanitizePortalOpts(opts?.portal),
         };
         rt.entities.set(id, rec);
         return rt.makeHandle(rec, require);
@@ -359,8 +430,57 @@ export class ScriptRuntime {
       events,
       audio,
       log: (msg: string) => { require('log'); rt.opts.onLog?.(name, String(msg)); },
+      field: rt.buildFieldCaps(require),
     }) as Caps;
     return caps;
+  }
+
+  /** The `field` capability namespace (step 2): read-only wind sampling
+   *  for the lower tiers, six per-domain foundry writes for the top tier. */
+  private buildFieldCaps(require: (cap: CapabilityName) => void): FieldCaps {
+    const rt = this;
+    const field = deepFreeze({
+      wind(position: [number, number, number], time: number): [number, number, number] {
+        require('field.read');
+        const p = sanitizeVec3(position, 'field.wind position');
+        const t = checkFinite(time, 'field.wind time');
+        const s = rt.field.sampleWorld(p[0], p[1], p[2], t);
+        return deepFreeze([s.x, s.y, s.z]) as [number, number, number];
+      },
+      params(): JSONValue {
+        require('field.read');
+        return copyJson(rt.field.snapshot() as unknown as JSONValue) as JSONValue;
+      },
+      set(
+        domain: 'scene' | 'genesis' | 'biome' | 'tempo' | 'light' | 'presence',
+        patch: { [k: string]: JSONValue },
+      ): JSONValue {
+        const grant = `field.write.${domain}` as CapabilityName;
+        require(grant);
+        if (patch === null || typeof patch !== 'object' || Array.isArray(patch)) {
+          throw new Error('script: field.set patch must be an object');
+        }
+        const snap = rt.field.setDomain(domain as FieldDomain, patch as Record<string, unknown>);
+        return copyJson(snap as unknown as JSONValue) as JSONValue;
+      },
+    });
+    return field as FieldCaps;
+  }
+
+  /** Validate script-supplied portal link options (spawn path). */
+  private sanitizePortalOpts(opts: PortalSpawnOpts | undefined): PortalLink | null {
+    if (opts === undefined) return null;
+    if (opts === null || typeof opts !== 'object') {
+      throw new Error('script: portal opts must be an object');
+    }
+    if (typeof opts.targetZone !== 'string' || !opts.targetZone) {
+      throw new Error('script: portal.targetZone must be a non-empty string');
+    }
+    const targetSpawn = sanitizeVec3(opts.targetSpawn, 'portal.targetSpawn');
+    const radius = opts.radius === undefined ? 3 : checkFinite(opts.radius, 'portal.radius');
+    if (radius <= 0) throw new Error('script: portal.radius must be > 0');
+    const label = opts.label === undefined ? '' : String(opts.label);
+    return { targetZone: opts.targetZone, targetSpawn, radius, label };
   }
 
   private recordFor(handle: EntityHandle): EntityRecord | null {

@@ -62,6 +62,18 @@ export function sanitizeTransform(t: TransformData): TransformData {
   return deepFreeze(out);
 }
 
+/** Validate a [x,y,z] triple coming from a script. Returns a fresh tuple. */
+export function sanitizeVec3(v: [number, number, number], what: string): [number, number, number] {
+  if (!Array.isArray(v) || v.length !== 3) {
+    throw new Error(`script: ${what} must be [x,y,z]`);
+  }
+  return deepFreeze([
+    checkFinite(v[0], `${what}[0]`),
+    checkFinite(v[1], `${what}[1]`),
+    checkFinite(v[2], `${what}[2]`),
+  ]);
+}
+
 /** Copy an engine-side transform out to the script as frozen plain data. */
 export function exportTransform(t: TransformData): TransformData {
   return deepFreeze({

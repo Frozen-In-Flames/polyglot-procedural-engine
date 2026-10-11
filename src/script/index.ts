@@ -2,7 +2,7 @@
 export type {
   Caps, CapabilityName, WorldCaps, EventCaps, AudioCaps, TimeCaps,
   EntityHandle, TransformData, NoteEvent, ScriptDef,
-  EntityBackend, JSONValue,
+  EntityBackend, JSONValue, FieldCaps, PortalSpawnOpts,
 } from './api.js';
 export { ALL_CAPABILITIES } from './api.js';
 export {

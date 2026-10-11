@@ -73,7 +73,7 @@ export function plane(size = 1, seg = 1, generatedBy = 'TypeScript'): Geometry {
 }
 
 export function sphere(radius = 1, nu = 24, nv = 16, generatedBy = 'TypeScript'): Geometry {
-  return parametric((u, v) => {
+  const g = parametric((u, v) => {
     const theta = u * Math.PI * 2, phi = v * Math.PI;
     return [
       radius * Math.sin(phi) * Math.cos(theta),
@@ -81,6 +81,19 @@ export function sphere(radius = 1, nu = 24, nv = 16, generatedBy = 'TypeScript')
       radius * Math.sin(phi) * Math.sin(theta),
     ];
   }, { nu, nv, generatedBy });
+  // Winding fix (Oct 10, 2026): parametric() emits (a, d, c) triangles whose
+  // front face points INWARD for this parametrization (verified: at the
+  // equator (d-a)x(c-a) = -x while the outward normal is +x). Reverse each
+  // triangle so front faces point outward, matching the outward normals.
+  // skyDome()'s documented reversal (for viewing from inside) was written
+  // against outward-facing sphere() and works correctly once this lands.
+  const idx = g.indices;
+  for (let i = 0; i < idx.length; i += 3) {
+    const t = idx[i + 1];
+    idx[i + 1] = idx[i + 2];
+    idx[i + 2] = t;
+  }
+  return g;
 }
 
 export function torus(R = 1, r = 0.3, nu = 32, nv = 16, generatedBy = 'TypeScript'): Geometry {

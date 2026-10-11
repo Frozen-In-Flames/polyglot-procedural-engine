@@ -3,7 +3,93 @@
 All notable changes to the xr-engine. The live demo at
 https://frozen-in-flames.github.io/xr-engine/ tracks the latest release.
 
-## [Unreleased] — V4 step 1 in progress (2026-10-10)
+## [Unreleased] — V4 step 2 in progress (2026-10-10)
+
+World composition: independently authored zones stitch into one coherent
+world over a single shared seeded wind field. Local generation, global
+coherence — the architectural law made mechanical.
+
+### Added
+- `src/world/` — zone descriptors, portals, the composed world loader, and
+  the shared wind field:
+  - `types.ts`: `ZoneDescriptor` (seed + generator params + bounds + wind
+    weights + portal list) as PLAIN JSON — an independent developer authors
+    a zone without touching engine internals. `parseZoneDescriptor`
+    validates strictly and REJECTS any `wind.seed`: per-zone wind derives
+    from the global field, never from an independent per-zone seed (the law,
+    enforced at the door). The six live domain parameter sets
+    (`scene/genesis/biome/tempo/light/presence`, one lever per language).
+  - `wind.ts`: the global seeded procedural vector field —
+    `W(p,t) = gain * Σ_k env_k(p) * gust_k(p,t) * dir_k(p,t)`, four layers,
+    each with its own wavelength (14/22/34/52 units), temporal frequency,
+    flow axis, amplitude, phase, and fbm force envelope, all drawn from
+    mulberry32 mixed with the global seed. Multi-directional at every point,
+    force varying across subsections, time-varying, bit-deterministic. The
+    player's embodied state (position/speed/rhythm) stirs the field locally
+    — the 7th lever — deterministically.
+  - `field.ts`: `GlobalField` owns one `WindField` plus the six live domain
+    params. `setDomain()` validates, merges, bumps `revision`, and notifies
+    listeners: the foundry endgame's mechanical foundation. Wind's global
+    gains ride the `genesis` lever (deep generation owns the weather).
+  - `zones.ts`: `Zone` binds a descriptor to the shared field. Local wind =
+    `global(p_world, t) * gustScale + anchorMean * biasWeight`, where
+    `anchorMean` is the global field averaged over a probe ring at the zone
+    anchor — the zone's prevailing wind read off the ocean, never invented.
+    Terrain/sky derive from the zone seed XOR the live genesis seed, so the
+    levers reshape them deterministically.
+  - `portals.ts` / `loader.ts`: portals as first-class entities
+    (transform + tag + engine-side `PortalLink`); `ComposedWorld` validates
+    and stitches descriptor arrays, spawns portal entities, and drives
+    handoff — the traveler keeps its entity id/name/tag, lands at the
+    target zone's spawn, world-state persists, `portal:exit`/`portal:enter`
+    fire, and a cooldown prevents bounce-back. Dangling links never
+    teleport. Seam continuity is structural: every zone samples the same
+    `GlobalField`, so `seamSample()` is bit-identical across zones.
+  - `samples.ts`: three sample zones (ember-reach, mote-hollow,
+    shimmer-flats) with distinct local character over one ocean, chained by
+    portals.
+- Terrain is the water: `src/geo/terrain.ts` gained an optional `shimmer`
+  hook — a directional ripple baked into heights plus a normal lean along
+  the local wind — and `Zone.buildTerrain()`/`windShimmer()` drive it from
+  the field, so the wind's structure reads on the land itself.
+- Script runtime extensions (minimal, additive — no redesign):
+  - `Caps.field`: `wind(position, time)` read-only sample (`field.read`
+    grant), `params()` live parameter copy, `set(domain, patch)` foundry
+    write (matching `field.write.<domain>` grant).
+  - `world.spawn` accepts `portal: { targetZone, targetSpawn, radius?,
+    label? }` — scripts spawn/link first-class portals through their
+    `world` capability.
+  - Host-side `ScriptRuntime` methods for the loader: `spawnHost`,
+    `hostEntities`, `hostGetTransform`/`hostSetTransform`, `portalLink`;
+    `RuntimeOptions.field` lets hosts share one `GlobalField` between
+    scripts and zones (default: built from the runtime seed).
+- `test/world.test.ts`: 15 tests — determinism (independent stacks, same
+  seed: identical snapshots, field samples, terrain), seam coherence,
+  local-wind derivation law, portal transition (identity/state/events/
+  cooldown/dangling links), wind multi-directionality + time variance +
+  player wake, six-domain re-derivation (revision bumps, downstream effects,
+  determinism), terrain wind texture, descriptor validation, script
+  integration (grant-gated read/write, script-spawned portals).
+
+### Fixed
+- `sphere()` in `src/geo/parametric.ts` had inverted triangle winding
+  (faces pointed inward while normals pointed outward): demo orbs and
+  `rock()` rendered inside-out under culling, and `skyDome()`'s documented
+  winding reversal double-inverted, rendering zero sky fragments from
+  inside. One-line winding correction in `sphere()`; verified numerically
+  (face·stored-normal avg +0.99 for sphere, +0.995 for skyDome). Found while
+  verifying: `torus()` has the opposite inconsistency (outward winding,
+  inward normals — correct culling, inverted lighting); left untouched for
+  the rendering-closeouts lane.
+
+### API gaps found (for step 3, First Light)
+- (carried from step 1) spawn can't attach geometry/materials; behaviors
+  are per-script not per-entity; no physics/renderer queries; audio one-way;
+  no deterministic scheduler.
+- (new) Portal entities spawned by scripts are not auto-adopted into the
+  loader's stitched set — hosts must adopt them explicitly.
+
+## [Unreleased] — V4 step 1 (2026-10-10)
 
 ### Rendering closeouts (stretch, parallel lane)
 - `python/xrgen/geometry.py`: geometry-reconstruction prototype
