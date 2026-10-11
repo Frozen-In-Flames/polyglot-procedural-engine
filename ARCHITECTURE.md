@@ -65,6 +65,16 @@ cooperation. That visible pipeline IS the v1 deliverable, as much as the world i
   engine scenes can drive generative music parameters per-frame.
 - **bridge** — the FFI seams: WASM loader for the C++ module, `ScriptProvider`
   interface for C#, `SessionProvider` interface for Swift/Kotlin.
+- **script** (V4) — sandboxed execution runtime: the platform surface. Scripts
+  get exactly ONE frozen capability object (`Caps`): seeded RNG, read-only
+  clock, entity spawn/query/transform, procedural world-state store, event
+  bus, one-way audio sink. Sealed entity handles, graduated capability grants
+  (tiered authorship; top tier decomposes into six per-domain
+  `field.write.*` grants, one per engine language), reserved `field`
+  namespace for step 2's environmental-field query. Threat model:
+  capability-closure, not malicious-actor containment. Reference scripts
+  port the C# `ScriptProvider` behaviors (float bob+spin; bit-exact arp+hats
+  composition).
 
 **C++ (`native/`)** — `gen/` procedural generation core: seeded simplex noise,
 heightfield synthesis, mesh synthesis (grid/radial). Compiled to WASM for v1

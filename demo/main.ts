@@ -9,6 +9,7 @@ import {
   ParticleSystem, particleGeometry, writeParticles, skyDome, rock, scatterRocks,
   type Collider, type Geometry,
   fromAxisAngle, quatMultiply,
+  ScriptRuntime, SceneEntityBackend, floatScript,
   type GenCore, type XRSessionHandle, type XRMode, type FrameCallback, type RenderView,
 } from '../src/index.js';
 
@@ -225,6 +226,7 @@ async function main(): Promise<void> {
   pipelineRow('materials / shaders', 'TypeScript');
   pipelineRow('renderer (WebGL2)', 'TypeScript');
   pipelineRow('scripting provider', 'C# (.NET)');
+  pipelineRow('script runtime (sandbox)', 'TypeScript');
   pipelineRow('XR session', 'TypeScript (WebXR)');
   pipelineRow('audio: pad voice', 'TypeScript');
   pipelineRow('audio: DSP bass', gen.languageTag);
@@ -288,12 +290,32 @@ async function main(): Promise<void> {
   window.addEventListener('resize', onResize);
   onResize();
 
+  // ---- Sandboxed scripting runtime (V4 step 1) ----
+  // The float reference script (ported from the C# FloatScript) spawns and
+  // animates an ember through its capability object only — it never sees
+  // the SceneNode, renderer, or DOM. The host gives the spawned node a
+  // visible body and forwards pointer input as script events.
+  const scripts = new ScriptRuntime(20261010, new SceneEntityBackend(root));
+  scripts.load(floatScript);
+  root.traverse((n) => {
+    if (n.name === 'float-ember') {
+      n.addComponent(new Mesh(
+        sphere(0.35, 24, 16),
+        buildMaterial({ baseColor: [1.0, 0.55, 0.2], effects: [], generatedBy: 'TypeScript', unlit: true }),
+      ));
+    }
+  });
+  canvas.addEventListener('pointerdown', (e) => {
+    scripts.emit('input:pointer', { x: e.clientX, y: e.clientY });
+  });
+
   // ---- Frame loop (shared by inline + XR sessions) ----
   let last = performance.now();
   const frame: FrameCallback = (views: RenderView[], t: number) => {
     const now = performance.now();
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
+    scripts.update(dt, t);
     root.updateWorldMatrix(null);
     root.update(dt, t);
     renderer.render(root, camera, camNode, views, t);

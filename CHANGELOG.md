@@ -3,6 +3,59 @@
 All notable changes to the xr-engine. The live demo at
 https://frozen-in-flames.github.io/xr-engine/ tracks the latest release.
 
+## [Unreleased] — V4 step 1 in progress (2026-10-10)
+
+Sandboxed scripting runtime: the engine becomes a platform. Game logic is
+written by strangers against ONE frozen capability object — no WebGL, no
+DOM, no engine internals.
+
+### Added
+- `src/script/` — the sandboxed execution runtime:
+  - `api.ts`: the capability API. `Caps` is the single object a script ever
+    receives: seeded `rng` (mulberry32, mixed per script so script
+    determinism matches engine determinism), read-only `time`, `world`
+    (spawn/find/query/destroy + a procedural world-state store), `events`
+    (global + per-entity bus; host injects input), `audio` (one-way note
+    sink in the shared score schema), `log`. All JSONValue across the
+    boundary, copied both ways. Graduated `CapabilityName` grants
+    (`world.spawn`, `world.query`, `world.state`, `events`, `audio`, …) so
+    authorship can be tiered later; the endgame foundry top tier decomposes
+    into six per-domain write grants (`field.write.scene/genesis/biome/
+    tempo/light/presence`, one per engine language). A `field` namespace is
+    reserved for step 2's read-only environmental ("wind") field query.
+  - `runtime.ts`: `ScriptRuntime` loads defs, builds each a frozen Caps,
+    drives them from the main loop, and drains composed audio. Entity
+    handles are sealed closures (no forgeable identity — entity ids live in
+    an engine-side WeakMap, never on the handle). `MemoryEntityBackend` for
+    tests, `SceneEntityBackend` for live scenes. Threat model, stated
+    honestly: V4 guarantees capability-closure, not malicious-actor
+    containment; full realm isolation is future work.
+  - `refScripts.ts`: the C# `ScriptProvider` behaviors ported as reference
+    scripts — `floatScript` (bob+spin, behavioral port of `FloatScript`) and
+    `arpScript`/`hatsScript` (bit-exact ports of `ScoreComposer`: own
+    SplitMix64 via BigInt, C# banker's rounding on the time grid).
+- `test/script.test.ts`: 17 tests — functional (spawn/react/determinism/
+  events/state/audio sink/unload), C# parity (composed events vs the
+  committed `gen/csharp-score.json`: exact on t/dur/kind/gain, ±0.005 on
+  freq across the Math.Pow boundary), graduated grants, and adversarial
+  sandbox-boundary tests (frozen graph, no internals reachable, forged
+  handles, snapshot isolation, input validation).
+- Demo: 19th pipeline overlay row — `script runtime (sandbox)` — and the
+  `float` reference script driving a visible ember in the live scene.
+
+### API gaps found (for step 3, First Light)
+- Scripts cannot attach geometry/materials — `spawn` creates transform-only
+  entities; visible bodies are host-side. A game needs `world.spawn` with a
+  procedural-geometry/material descriptor, or a mesh-authoring capability.
+- No per-entity behavior attachment: behaviors are per-script (one
+  update fn), not per-entity. A game wants `handle.onUpdate(fn)` or
+  behavior components.
+- No physics/renderer queries through caps (raycasts, colliders, picking) —
+  input is host-injected events only.
+- Audio is one-way: scripts cannot read playback position or loop phase.
+- No timers/async through caps (deliberate for determinism, but a game will
+  want a deterministic scheduler).
+
 ## [0.3.0] — V3 (2026-10-10)
 
 Inverse rendering: distill super-resolved frames into procedural math.
