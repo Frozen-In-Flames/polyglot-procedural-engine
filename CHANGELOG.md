@@ -5,6 +5,35 @@ https://frozen-in-flames.github.io/xr-engine/ tracks the latest release.
 
 ## [Unreleased] — V4 step 1 in progress (2026-10-10)
 
+### Rendering closeouts (stretch, parallel lane)
+- `python/xrgen/geometry.py`: geometry-reconstruction prototype
+  (stdlib-only, the other half of inverse rendering). `unproject_points()`
+  turns depth/normal G-buffers into world points; `fit_base_plane()`
+  finds the dominant plane (smallest perpendicular RMSE over the three
+  axis trials); `fit_displacement()` fits the canonical fbm-hhash detail
+  function to the residuals by exact least squares, reusing
+  `inverse._dnoise`, so the already-mirrored runtime detail evaluator
+  needs no new mirror. `reconstruct_geometry()` emits an `xr-geom/1`
+  JSON bundle. Quality gate: displacement R² >= 0.70, coverage >= 0.50,
+  and median |cos| >= 0.95 between fitted-analytic and measured normals;
+  bad fits are flagged, never silently shipped. 15 synthetic CPU tests
+  in `python/test/test_geometry.py`, all green.
+- `Renderer.captureGBuffer()` now EXECUTED on real WebGL2 (headless
+  Chromium 152, SwiftShader): `EXT_color_buffer_float` present, shaders
+  compiled, 3x RGBA32F targets rendered and read back. Analytic quad
+  probe: coverage exactly as predicted, depth err 7.8e-7, shading err
+  1.4e-6, normals exact, UV err 2.4e-5; unlit materials write shading
+  exactly 1.0. Details in INVERSE.md.
+- Real DLSS frame capture: no `nvidia-smi`, no RTX hardware on this
+  machine. Not attempted, not faked; remains UNVERIFIED by design.
+- Found by the G-buffer execution (verified, fix pending in `src/geo`):
+  `sphere()` has inverted triangle winding, so with `CULL_FACE` enabled
+  spheres render inside-out (measured nearest depth 5.555 vs 4.63
+  analytic; harness-side reversal measures 4.637). Affects demo orbs and
+  `rock()`; `skyDome()`'s winding reversal double-inverts, so the sky
+  dome renders zero fragments from inside -- the demo sky gradient and
+  stars are currently invisible. One-line winding fix pending.
+
 Sandboxed scripting runtime: the engine becomes a platform. Game logic is
 written by strangers against ONE frozen capability object — no WebGL, no
 DOM, no engine internals.
