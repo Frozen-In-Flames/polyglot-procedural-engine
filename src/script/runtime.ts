@@ -324,6 +324,18 @@ export class ScriptRuntime {
     return rec && rec.alive ? rec.portal : null;
   }
 
+  /**
+   * Host-side: a sealed handle for a live entity by id (engine side of the
+   * wall). Used by the V5 in-session build tools to bind behavior scripts
+   * to entities the builder chose. Returns null when the id is not a live
+   * entity. Grants are not checked here: this is the host, not a script.
+   */
+  hostHandle(id: number): EntityHandle | null {
+    const rec = this.entities.get(id);
+    if (!rec || !rec.alive) return null;
+    return this.makeHandle(rec, () => undefined);
+  }
+
   hostGetTransform(id: number): TransformData | null {
     const rec = this.entities.get(id);
     if (!rec || !rec.alive) return null;
