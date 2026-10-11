@@ -97,7 +97,7 @@ export function sphere(radius = 1, nu = 24, nv = 16, generatedBy = 'TypeScript')
 }
 
 export function torus(R = 1, r = 0.3, nu = 32, nv = 16, generatedBy = 'TypeScript'): Geometry {
-  return parametric((u, v) => {
+  const g = parametric((u, v) => {
     const a = u * Math.PI * 2, b2 = v * Math.PI * 2;
     return [
       (R + r * Math.cos(b2)) * Math.cos(a),
@@ -105,4 +105,13 @@ export function torus(R = 1, r = 0.3, nu = 32, nv = 16, generatedBy = 'TypeScrip
       (R + r * Math.cos(b2)) * Math.sin(a),
     ];
   }, { nu, nv, generatedBy });
+  // Normal fix (Oct 10, 2026): parametric() emits outward-facing triangles
+  // for this parametrization, but its tu×tv central-difference normals point
+  // INWARD (verified analytically at the outer equator and numerically:
+  // face·normal alignment -0.99). Negate the normals so lighting matches the
+  // outward winding. (Flipping the v parametrization instead would invert the
+  // winding, so negation is the correct minimal fix.)
+  const n = g.normals;
+  for (let i = 0; i < n.length; i++) n[i] = -n[i];
+  return g;
 }
