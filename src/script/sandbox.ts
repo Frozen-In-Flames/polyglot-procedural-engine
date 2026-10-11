@@ -10,7 +10,7 @@
 // a fresh global) is future work, explicitly out of V4 scope. Treat the
 // runtime as protection against buggy or curious scripts, not adversaries.
 
-import type { JSONValue, TransformData } from './api.js';
+import type { JSONValue, TransformData, SpawnBody } from './api.js';
 
 /** Recursively freeze an object graph. Cycles are guarded. */
 export function deepFreeze<T>(obj: T, seen = new Set<object>()): T {
@@ -118,4 +118,84 @@ export function graphContains(root: unknown, ctors: Function[], seen = new Set<o
     } catch { /* getters that throw are not traversable; skip */ }
   }
   return null;
+}
+
+/** Validate a SpawnBody descriptor from a script. Returns a fresh, plain,
+ *  frozen descriptor the engine may hold without aliasing script memory. */
+export function sanitizeBody(body: SpawnBody): SpawnBody {
+  if (body === null || typeof body !== 'object') {
+    throw new Error('script: body must be an object');
+  }
+  const g = (body as unknown as Record<string, unknown>).geometry as Record<string, unknown> | undefined;
+  if (g === null || typeof g !== 'object') {
+    throw new Error('script: body.geometry must be an object');
+  }
+  const kinds = ['sphere', 'box', 'cone', 'torus', 'octahedron', 'prism'];
+  if (typeof g.kind !== 'string' || !kinds.includes(g.kind)) {
+    throw new Error(`script: body.geometry.kind must be one of ${kinds.join('|')}`);
+  }
+  const numOpt = (v: unknown, what: string): number | undefined => {
+    if (v === undefined) return undefined;
+    return checkFinite(v as number, what);
+  };
+  const geometry: SpawnBody['geometry'] = { kind: g.kind as SpawnBody['geometry']['kind'] };
+  const radius = numOpt(g.radius, 'body.geometry.radius');
+  if (radius !== undefined) {
+    if (radius <= 0 || radius > 1000) throw new Error('script: body.geometry.radius must be in (0, 1000]');
+    geometry.radius = radius;
+  }
+  const tube = numOpt(g.tube, 'body.geometry.tube');
+  if (tube !== undefined) {
+    if (tube <= 0 || tube > 1000) throw new Error('script: body.geometry.tube must be in (0, 1000]');
+    geometry.tube = tube;
+  }
+  if (g.size !== undefined) {
+    if (!Array.isArray(g.size) || g.size.length !== 3) {
+      throw new Error('script: body.geometry.size must be [x,y,z]');
+    }
+    geometry.size = [
+      checkFinite(g.size[0], 'body.geometry.size[0]'),
+      checkFinite(g.size[1], 'body.geometry.size[1]'),
+      checkFinite(g.size[2], 'body.geometry.size[2]'),
+    ];
+    for (const s of geometry.size) {
+      if (s <= 0 || s > 2000) throw new Error('script: body.geometry.size components must be in (0, 2000]');
+    }
+  }
+  const detail = numOpt(g.detail, 'body.geometry.detail');
+  if (detail !== undefined) {
+    if (!Number.isInteger(detail) || detail < 1 || detail > 64) {
+      throw new Error('script: body.geometry.detail must be an integer in [1, 64]');
+    }
+    geometry.detail = detail;
+  }
+  let material: SpawnBody['material'] | undefined;
+  const m = (body as unknown as Record<string, unknown>).material as Record<string, unknown> | undefined;
+  if (m !== undefined) {
+    if (m === null || typeof m !== 'object') throw new Error('script: body.material must be an object');
+    if (!Array.isArray(m.baseColor) || m.baseColor.length !== 3) {
+      throw new Error('script: body.material.baseColor must be [r,g,b]');
+    }
+    const baseColor: [number, number, number] = [
+      checkFinite(m.baseColor[0], 'body.material.baseColor[0]'),
+      checkFinite(m.baseColor[1], 'body.material.baseColor[1]'),
+      checkFinite(m.baseColor[2], 'body.material.baseColor[2]'),
+    ];
+    for (const c of baseColor) {
+      if (c < 0 || c > 1) throw new Error('script: body.material.baseColor components must be in [0,1]');
+    }
+    material = { baseColor };
+    if (m.effects !== undefined) {
+      const fx = ['noise', 'fresnel', 'grid', 'heightRamp', 'pulse', 'sky'];
+      if (!Array.isArray(m.effects) || !m.effects.every((e) => typeof e === 'string' && fx.includes(e))) {
+        throw new Error(`script: body.material.effects must be a subset of ${fx.join('|')}`);
+      }
+      material.effects = [...(m.effects as string[])] as Array<'noise' | 'fresnel' | 'grid' | 'heightRamp' | 'pulse' | 'sky'>;
+    }
+    if (m.unlit !== undefined) {
+      if (typeof m.unlit !== 'boolean') throw new Error('script: body.material.unlit must be a boolean');
+      material.unlit = m.unlit;
+    }
+  }
+  return deepFreeze({ geometry: deepFreeze(geometry), ...(material ? { material: deepFreeze(material) } : {}) }) as SpawnBody;
 }

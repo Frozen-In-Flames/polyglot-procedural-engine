@@ -189,7 +189,7 @@ export class Renderer {
         const geo = this.getGeometry(mesh.geometry);
         this.syncDynamic(mesh.geometry, geo);
         // Frustum cull: bounding sphere vs clip space (skipped for noCull).
-        if (!mesh.geometry.noCull && !this.sphereInFrustum(geo, mesh.node!.worldMatrix)) continue;
+        if (!mesh.geometry.noCull && !this.sphereInFrustum(geo, mesh.node!.worldMatrix, camPos)) continue;
         gl.useProgram(prog.program);
         gl.bindVertexArray(geo.vao);
         const u = prog.uniforms;
@@ -325,23 +325,31 @@ export class Renderer {
     return { width: W, height: H, uvDepth, normal, shading };
   }
 
-  private sphereInFrustum(geo: GLGeometry, model: Mat4): boolean {
+  private sphereInFrustum(geo: GLGeometry, model: Mat4, camPos: [number, number, number]): boolean {
     // Model-space center -> world -> clip.
     const [cx, cy, cz] = geo.boundCenter;
     const wx = model[0] * cx + model[4] * cy + model[8] * cz + model[12];
     const wy = model[1] * cx + model[5] * cy + model[9] * cz + model[13];
     const wz = model[2] * cx + model[6] * cy + model[10] * cz + model[14];
-    const m = this.viewProj;
-    const x = m[0] * wx + m[4] * wy + m[8] * wz + m[12];
-    const y = m[1] * wx + m[5] * wy + m[9] * wz + m[13];
-    const z = m[2] * wx + m[6] * wy + m[10] * wz + m[14];
-    const w = m[3] * wx + m[7] * wy + m[11] * wz + m[15];
-    if (w <= 0.001) return false;
     // Conservative radius: max model scale axis * bounding radius.
     const sx = Math.sqrt(model[0] * model[0] + model[1] * model[1] + model[2] * model[2]);
     const sy = Math.sqrt(model[4] * model[4] + model[5] * model[5] + model[6] * model[6]);
     const sz = Math.sqrt(model[8] * model[8] + model[9] * model[9] + model[10] * model[10]);
     const r = geo.boundRadius * Math.max(sx, sy, sz);
+    const m = this.viewProj;
+    const x = m[0] * wx + m[4] * wy + m[8] * wz + m[12];
+    const y = m[1] * wx + m[5] * wy + m[9] * wz + m[13];
+    const z = m[2] * wx + m[6] * wy + m[10] * wz + m[14];
+    const w = m[3] * wx + m[7] * wy + m[11] * wz + m[15];
+    if (w <= 0.001) {
+      // Center behind the camera: the clip-space test below would
+      // misbehave (w < 0 flips the inequalities). The sphere is still
+      // visible when it reaches the camera — the normal case for a walker
+      // standing inside a large terrain — so cull only when the camera is
+      // strictly outside the sphere.
+      const dx = wx - camPos[0], dy = wy - camPos[1], dz = wz - camPos[2];
+      return dx * dx + dy * dy + dz * dz <= r * r;
+    }
     return (
       x > -w - r && x < w + r &&
       y > -w - r && y < w + r &&

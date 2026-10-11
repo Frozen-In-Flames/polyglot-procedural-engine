@@ -276,9 +276,13 @@ test('sandbox: capability object graph is frozen and closed', () => {
 test('sandbox: handle exposes no forgeable identity', () => {
   const { handle } = hostileCaps();
   const keys = Object.getOwnPropertyNames(handle).sort();
-  assert.deepEqual(keys, ['alive', 'emit', 'getTag', 'getTransform', 'name', 'on', 'setTag', 'setTransform', 'translate']);
+  assert.deepEqual(keys, ['alive', 'emit', 'getTag', 'getTransform', 'id', 'name', 'on', 'setTag', 'setTransform', 'translate']);
   for (const k of keys) assert.ok(!k.startsWith('_'), `no private-looking key: ${k}`);
   assert.equal(Object.getPrototypeOf(handle), Object.prototype);
+  // The numeric id is informational only: no capability function accepts a
+  // raw id, so copying it onto a forged object grants nothing — authority
+  // flows exclusively through the engine-side WeakMap-bound handle object
+  // (see 'forged handles cannot destroy entities' below).
 });
 
 test('sandbox: forged handles cannot destroy entities (no confused deputy)', () => {

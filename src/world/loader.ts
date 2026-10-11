@@ -31,6 +31,8 @@ export class ComposedWorld {
   private handoff = new PortalHandoff();
   /** Zone ids in load order (deterministic). */
   readonly loadOrder: string[] = [];
+  /** Entity roster size the last time adoptScriptPortals ran. */
+  private lastRosterSize = -1;
 
   constructor(field: GlobalField, rt: ScriptRuntime) {
     this.field = field;
@@ -105,7 +107,55 @@ export class ComposedWorld {
     // Zones re-derive lazily on field revision changes (sync() in localWind
     // etc.), but portal mouths follow zone placement which is static — no
     // per-frame zone work needed here beyond the handoff.
+    this.adoptScriptPortals();
     return this.handoff.update(this.rt, this.portals, this.zones, t);
+  }
+
+  /**
+   * Adopt portals spawned by SCRIPTS (step-3 API fix). A script links a
+   * portal through its `world` capability; the link lands on the entity
+   * record, but the loader's stitched set never saw it — so the handoff
+   * ignored script-spawned portals entirely. This scan picks up every live
+   * entity tagged 'portal' carrying a link and stitches it in, bound to
+   * the nearest zone (mouth coordinates are re-expressed zone-local so the
+   * handoff's seam math keeps working). Runs at the top of update(); it is
+   * O(entity count) only when the entity roster changed.
+   */
+  adoptScriptPortals(): void {
+    const roster = this.rt.hostEntities();
+    if (roster.length === this.lastRosterSize) return;
+    this.lastRosterSize = roster.length;
+    const known = new Set(this.portals.map((p) => p.entityId));
+    for (const e of roster) {
+      if (e.tag !== 'portal' || known.has(e.id)) continue;
+      const link = this.rt.portalLink(e.id);
+      if (!link) continue;
+      const tf = this.rt.hostGetTransform(e.id);
+      if (!tf) continue;
+      const zone = this.nearestZone(tf.position);
+      if (!zone) continue;
+      this.portals.push({
+        entityId: e.id,
+        zoneId: zone.descriptor.id,
+        zone,
+        localPosition: zone.toLocal(tf.position),
+        link,
+      });
+      known.add(e.id);
+    }
+  }
+
+  /** Nearest zone to a world point, by placement offset (2D). */
+  private nearestZone(p: Vec3JSON): Zone | null {
+    let best: Zone | null = null;
+    let bestD = Infinity;
+    for (const z of this.zones.values()) {
+      const o = z.descriptor.placement.offset;
+      const dx = p[0] - o[0], dz = p[2] - o[2];
+      const d = dx * dx + dz * dz;
+      if (d < bestD) { bestD = d; best = z; }
+    }
+    return best;
   }
 
   /**

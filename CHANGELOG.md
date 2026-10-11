@@ -3,6 +3,86 @@
 All notable changes to the xr-engine. The live demo at
 https://frozen-in-flames.github.io/xr-engine/ tracks the latest release.
 
+## [Unreleased] — V4 step 3 in progress (2026-10-10)
+
+FIRST LIGHT: one real game, built as an external developer would build it
+— game code lives in `games/first-light/` and touches ONLY the public API
+(`src/script`, `src/world`, engine public surface). Every gap the game
+needed became a documented API fix in `src/`, not a workaround. The V4
+proof: the platform holds.
+
+### The game
+
+First-person walker across the three sample zones, linked by portals.
+Visible goal: gather wind-blown embers, carry them to the dark gate.
+Hidden goal: **attunement** — a hidden 0–100 score rewarding embodied
+prediction (A: velocity aligned with the local wind; B: standing where an
+ember current will carry an ember within seconds; C: holding still as a
+gust front passes). Felt, never explained: no UI, no numbers, no hints.
+The gate brightens per ember delivered but OPENS only at attunement
+level 6 (resonance, not collection). A plain-sight portal in mote-hollow
+— crossable only by moving with a gust — leads to the foundry: six
+in-world levers (TypeScript=scene, C++/WASM=genesis, Python=biome,
+C#=tempo, Swift=light, Kotlin=presence), each writing its domain live
+through top-tier grants while the composed world re-derives downstream.
+The 7th lever is the player's own body stirring the field, legible in
+the foundry's wake rings.
+
+`games/first-light/`: `main.ts` (host), `world-view.ts` (dressing),
+`zones.ts` (3 sample zones + foundry), `shared.ts`, 8 scripts
+(player/embers/motes/attunement/gate/secret/foundry/levers), own
+tsconfig + vite build. `test/first-light.test.ts`: 16 tests —
+attunement scoring up/down, level emissions, gate open condition, ember
+delivery brightening, secret-portal adoption + crossing, lever→domain
+wiring + grant denial, portal auto-adoption, probe, onEvent tap.
+Verified in headless Chromium (SwiftShader): boot, movement, gate
+resonance, secret-portal crossing, lever adjust (C# tempo 2.0→2.75),
+zero console errors; screenshots in `games/first-light/dist-shots/`.
+
+### API fixes (in `src/`, all additive)
+
+- `world.spawn` accepts procedural **`body` descriptors**
+  (`SpawnBody`: sphere/box/cone/torus/octahedron/prism + material:
+  baseColor/effects/unlit). New `src/script/bodies.ts` (engine-side
+  builder — one geometry/material path for every backend),
+  `sanitizeBody()` in the sandbox (dims clamped, effects allow-listed,
+  `generatedBy` forced to the script name for provenance), `spawn` in both
+  backends extended (`SceneEntityBackend` attaches a `Mesh`,
+  `MemoryEntityBackend` records bodies for tests). Rationale: scripts
+  could place invisible transforms only; a game needs visible things, and
+  procedural descriptors keep the zero-asset law (no meshes smuggled in).
+- **Script-portal auto-adoption**: `ComposedWorld.adoptScriptPortals()`
+  scans runtime entities tagged `portal` carrying links and stitches them
+  into the loader's portal set (nearest zone), running in `update()` when
+  the roster changes. Closes the step-2 gap entry.
+- **`caps.probe.ground(x, z)`**: host-registered terrain sampler, new
+  `probe` capability (added to `ALL_CAPABILITIES`). Scripts keep the
+  player/embers/motes/gate planted on procedural ground without reading
+  engine internals.
+- **`RuntimeOptions.onEvent`**: host tap on script-originated events
+  (HUD/progression feed); host→script traffic is not re-tapped.
+- **`EntityHandle.id` now populated** by `makeHandle` (the interface
+  promised it; the runtime never set it).
+- `renderer.ts` **`sphereInFrustum` fix**: meshes whose bounding-sphere
+  center sat behind the camera were culled even when the camera was
+  *inside* the sphere — the normal case for a walker on a 120-unit
+  terrain, which rendered as missing ground. Now: center-behind-camera
+  culls only when the camera is strictly outside the sphere.
+- `GlobalField.setPlayerState` **no longer bumps the field revision**:
+  player state is a live sample-time input to the wind field, not a
+  derivation parameter. Bumping it invalidated every zone's derivations
+  each frame (and leaked the player's momentary position into the
+  anchor-mean probes). The 7th lever still works — the wake is evaluated
+  per sample.
+
+### Fixed
+- Gate/portal torus rings now stand vertical (quarter-X rotation); the
+  gate revolves slowly about world Y.
+- Motes part around the walker (a mote inside the near plane smeared
+  across the frame).
+- The sun is aimed from the front-top so camera-facing slopes read in
+  diffuse instead of ambient + a specular streak.
+
 ## [Unreleased] — V4 step 2 in progress (2026-10-10)
 
 World composition: independently authored zones stitch into one coherent
@@ -83,11 +163,15 @@ coherence — the architectural law made mechanical.
   the rendering-closeouts lane.
 
 ### API gaps found (for step 3, First Light)
-- (carried from step 1) spawn can't attach geometry/materials; behaviors
-  are per-script not per-entity; no physics/renderer queries; audio one-way;
-  no deterministic scheduler.
+- (carried from step 1) spawn can't attach geometry/materials — CLOSED in
+  step 3 via procedural `body` descriptors; behaviors are per-script not
+  per-entity — unchanged (scripts coordinate via events/state);
+  no physics/renderer queries — PARTLY closed via `caps.probe.ground`
+  (terrain sampling); audio one-way — unchanged; no deterministic
+  scheduler — unchanged.
 - (new) Portal entities spawned by scripts are not auto-adopted into the
-  loader's stitched set — hosts must adopt them explicitly.
+  loader's stitched set — CLOSED in step 3 via
+  `ComposedWorld.adoptScriptPortals()`.
 
 ## [Unreleased] — V4 step 1 (2026-10-10)
 

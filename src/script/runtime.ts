@@ -16,12 +16,14 @@ import type { PortalLink } from '../world/portals.js';
 import type { FieldDomain } from '../world/types.js';
 import type {
   Caps, CapabilityName, EntityBackend, EntityHandle, EventCaps, JSONValue, NoteEvent,
-  ScriptDef, TimeCaps, TransformData, WorldCaps, AudioCaps, FieldCaps,
-  PortalSpawnOpts,
+  ScriptDef, TimeCaps, TransformData, WorldCaps, AudioCaps, FieldCaps, ProbeCaps,
+  PortalSpawnOpts, SpawnBody,
 } from './api.js';
 import { ALL_CAPABILITIES } from './api.js';
+import { buildBody } from './bodies.js';
+import { Mesh } from '../scene/components.js';
 import {
-  copyJson, deepFreeze, exportTransform, sanitizeNote, sanitizeTransform, sanitizeVec3, checkFinite,
+  copyJson, deepFreeze, exportTransform, sanitizeBody, sanitizeNote, sanitizeTransform, sanitizeVec3, checkFinite,
 } from './sandbox.js';
 
 /** Mix a runtime seed with a script name into a 32-bit stream seed. */
@@ -42,16 +44,19 @@ const DEFAULT_TRANSFORM: TransformData = {
 export class MemoryEntityBackend implements EntityBackend {
   private next = 1;
   private store = new Map<number, TransformData>();
-  spawn(_name: string, initial: TransformData): number {
+  /** Body descriptors by entity id (tests assert on spawned bodies). */
+  readonly bodies = new Map<number, SpawnBody>();
+  spawn(_name: string, initial: TransformData, opts?: { body?: SpawnBody }): number {
     const id = this.next++;
     this.store.set(id, {
       position: [...initial.position] as [number, number, number],
       rotation: [...initial.rotation] as [number, number, number, number],
       scale: [...initial.scale] as [number, number, number],
     });
+    if (opts?.body) this.bodies.set(id, opts.body);
     return id;
   }
-  destroy(id: number): void { this.store.delete(id); }
+  destroy(id: number): void { this.store.delete(id); this.bodies.delete(id); }
   getTransform(id: number): TransformData | null {
     const t = this.store.get(id);
     return t ? {
@@ -71,17 +76,23 @@ export class MemoryEntityBackend implements EntityBackend {
 }
 
 /** SceneNode-backed entity backend for the live demo / real hosts.
- *  Lives on the engine side of the wall: scripts never receive a SceneNode. */
+ *  Lives on the engine side of the wall: scripts never receive a SceneNode.
+ *  When a body descriptor is supplied (step 3), the spawned node gets a
+ *  visible procedural Mesh built engine-side from the descriptor. */
 export class SceneEntityBackend implements EntityBackend {
   private next = 1;
   private nodes = new Map<number, SceneNode>();
   constructor(private root: SceneNode) {}
-  spawn(name: string, initial: TransformData): number {
+  spawn(name: string, initial: TransformData, opts?: { body?: SpawnBody }): number {
     const id = this.next++;
     const node = new SceneNode(name)
       .setPosition(initial.position[0], initial.position[1], initial.position[2]);
     node.rotation = [initial.rotation[0], initial.rotation[1], initial.rotation[2], initial.rotation[3]];
     node.scale = [initial.scale[0], initial.scale[1], initial.scale[2]];
+    if (opts?.body) {
+      const { geometry, material } = buildBody(opts.body);
+      node.addComponent(new Mesh(geometry, material));
+    }
     node.markDirty();
     this.root.addChild(node);
     this.nodes.set(id, node);
@@ -133,6 +144,20 @@ export interface RuntimeOptions {
   onLog?: (scriptName: string, msg: string) => void;
   onError?: (scriptName: string, err: unknown) => void;
   /**
+   * Host tap on the script event bus (step 3): called with a COPY of every
+   * event a script emits through `caps.events.emit` / `handle.emit`.
+   * Lets the host build HUD, progression, and achievement UI on top of
+   * script events without breaking the capability wall (host -> script
+   * traffic via `emit()` is not re-tapped; the host already knows it).
+   */
+  onEvent?: (event: string, data: JSONValue) => void;
+  /**
+   * Terrain-height sampler behind `caps.probe.ground` (step 3). The host
+   * wires its composed world's heightfields here; when unset the probe
+   * answers 0 (flat plane) so headless tests stay deterministic.
+   */
+  probe?: (x: number, z: number) => number;
+  /**
    * The shared environmental field (step 2). When omitted, the runtime owns
    * one built from the runtime seed — every script's `field` namespace then
    * samples the same global wind. Hosts composing a world pass their
@@ -145,9 +170,12 @@ export class ScriptRuntime {
   private backend: EntityBackend;
   private instances: ScriptInstance[] = [];
   private entities = new Map<number, EntityRecord>();
-  // Engine-side handle -> record link. The entity id NEVER appears on the
-  // handle object itself: a script cannot forge a handle for an entity it
-  // was never given (no confused-deputy destroy via a guessed id).
+  // Engine-side handle -> record link. Authority flows ONLY through this
+  // WeakMap: no capability function accepts a raw entity id, so exposing
+  // `id` on the handle (per the EntityHandle interface — scripts need
+  // per-entity identity for phases, cooldowns, etc.) cannot forge authority
+  // over an entity the script was never given (no confused-deputy destroy
+  // via a guessed id: recordFor() simply won't resolve a foreign object).
   private handleRecords = new WeakMap<object, EntityRecord>();
   private globalHandlers = new Map<string, Set<{ inst: ScriptInstance; fn: Handler }>>();
   private worldState = new Map<string, JSONValue>();
@@ -267,11 +295,12 @@ export class ScriptRuntime {
   spawnHost(
     name: string,
     initial: TransformData,
-    opts?: { tag?: string; portal?: PortalSpawnOpts },
+    opts?: { tag?: string; portal?: PortalSpawnOpts; body?: SpawnBody },
   ): number {
     if (typeof name !== 'string' || !name) throw new Error('host: spawn needs a name');
     const clean = sanitizeTransform(initial);
-    const id = this.backend.spawn(name, clean);
+    const body = opts?.body === undefined ? undefined : sanitizeBody(opts.body);
+    const id = this.backend.spawn(name, clean, body ? { body } : undefined);
     this.entities.set(id, {
       id, name, tag: opts?.tag ?? '', alive: true,
       handlers: new Map(),
@@ -335,6 +364,7 @@ export class ScriptRuntime {
         scale?: [number, number, number];
         tag?: string;
         portal?: PortalSpawnOpts;
+        body?: SpawnBody;
       }) {
         require('world.spawn');
         if (typeof wname !== 'string' || !wname) throw new Error('script: spawn needs a name');
@@ -343,7 +373,8 @@ export class ScriptRuntime {
           rotation: opts?.rotation ?? [0, 0, 0, 1],
           scale: opts?.scale ?? [1, 1, 1],
         });
-        const id = rt.backend.spawn(wname, initial);
+        const body = opts?.body === undefined ? undefined : sanitizeBody(opts.body);
+        const id = rt.backend.spawn(wname, initial, body ? { body } : undefined);
         const rec: EntityRecord = {
           id, name: wname, tag: opts?.tag ?? '', alive: true,
           handlers: new Map(),
@@ -398,14 +429,19 @@ export class ScriptRuntime {
       },
       emit(event: string, data?: JSONValue): void {
         require('events');
-        const set = rt.globalHandlers.get(String(event));
-        if (!set) return;
+        const ev = String(event);
         const payload = copyJson(data ?? null) as JSONValue;
-        for (const h of [...set]) {
-          if (h.inst.errored) continue;
-          try { h.fn(copyJson(payload) as JSONValue); }
-          catch (err) { rt.reportError(h.inst.def.name, err); h.inst.errored = true; }
+        const set = rt.globalHandlers.get(ev);
+        if (set) {
+          for (const h of [...set]) {
+            if (h.inst.errored) continue;
+            try { h.fn(copyJson(payload) as JSONValue); }
+            catch (err) { rt.reportError(h.inst.def.name, err); h.inst.errored = true; }
+          }
         }
+        // Host tap: the host observes script-originated traffic (HUD,
+        // progression). A copy; the host cannot reach back through it.
+        rt.opts.onEvent?.(ev, copyJson(payload) as JSONValue);
       },
     });
 
@@ -431,8 +467,25 @@ export class ScriptRuntime {
       audio,
       log: (msg: string) => { require('log'); rt.opts.onLog?.(name, String(msg)); },
       field: rt.buildFieldCaps(require),
+      probe: rt.buildProbeCaps(require),
     }) as Caps;
     return caps;
+  }
+
+  /** The `probe` capability namespace (step 3): host-registered environment
+   *  queries for embodied play. The default sampler answers 0 (flat plane)
+   *  so headless tests stay deterministic without a host. */
+  private buildProbeCaps(require: (cap: CapabilityName) => void): ProbeCaps {
+    const rt = this;
+    const sampler = rt.opts.probe ?? (() => 0);
+    const probe = deepFreeze({
+      ground(x: number, z: number): number {
+        require('probe');
+        const h = sampler(checkFinite(x, 'probe.ground x'), checkFinite(z, 'probe.ground z'));
+        return checkFinite(h, 'probe.ground result');
+      },
+    });
+    return probe as ProbeCaps;
   }
 
   /** The `field` capability namespace (step 2): read-only wind sampling
@@ -492,6 +545,7 @@ export class ScriptRuntime {
     const rt = this;
     const handle = {
       name: rec.name,
+      id: rec.id,
       get alive(): boolean { return rec.alive; },
       getTransform(): TransformData {
         require('world.query');
@@ -530,10 +584,16 @@ export class ScriptRuntime {
       },
       emit(event: string, data?: JSONValue): void {
         require('events');
-        const set = rec.handlers.get(String(event));
-        if (!set) return;
+        const ev = String(event);
+        const set = rec.handlers.get(ev);
         const payload = copyJson(data ?? null) as JSONValue;
-        for (const fn of [...set]) fn(copyJson(payload) as JSONValue);
+        if (set) {
+          for (const fn of [...set]) fn(copyJson(payload) as JSONValue);
+        }
+        // Host tap (same as the global bus): the host observes
+        // script-originated traffic. Entity handlers run unguarded by
+        // grants here as before; the tap itself is host-side.
+        rt.opts.onEvent?.(`entity:${rec.name}:${ev}`, copyJson(payload) as JSONValue);
       },
     };
     // The handle is frozen so scripts cannot rebind or extend it; the

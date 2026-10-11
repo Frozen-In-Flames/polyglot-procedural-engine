@@ -60,16 +60,48 @@ export interface EntityHandle {
   readonly alive: boolean;
 }
 
+/** Procedural body geometry a script may attach at spawn. Everything is
+ *  generated in code — kinds map onto the engine's parametric builders, so
+ *  spawned entities are visible with zero asset files. */
+export interface BodyGeometry {
+  /** 'sphere' | 'box' | 'cone' | 'torus' | 'octahedron' | 'prism' (cylinder). */
+  kind: 'sphere' | 'box' | 'cone' | 'torus' | 'octahedron' | 'prism';
+  /** Sphere radius / torus ring radius / cone base radius / prism radius. */
+  radius?: number;
+  /** Torus tube radius. */
+  tube?: number;
+  /** Box half-extents / prism height / cone height. */
+  size?: [number, number, number];
+  /** Tessellation detail (segments, int >= 1). */
+  detail?: number;
+}
+
+/** Procedural material for a spawned body. A subset of the engine's
+ *  MaterialSpec: color + shader effects + unlit flag. */
+export interface BodyMaterial {
+  baseColor: [number, number, number];
+  effects?: Array<'noise' | 'fresnel' | 'grid' | 'heightRamp' | 'pulse' | 'sky'>;
+  unlit?: boolean;
+}
+
+/** A visible procedural body attached to a spawned entity (step 3). */
+export interface SpawnBody {
+  geometry: BodyGeometry;
+  material?: BodyMaterial;
+}
+
 /** Procedural world state the script owns: entities + a key/value store. */
 export interface WorldCaps {
   /** Spawn an entity. Options are plain data. `portal` links the spawned
-   *  entity as a first-class portal (step 2). */
+   *  entity as a first-class portal (step 2); `body` attaches a procedural
+   *  visible body (step 3) — without it the entity is transform-only. */
   spawn(name: string, opts?: {
     position?: [number, number, number];
     rotation?: [number, number, number, number];
     scale?: [number, number, number];
     tag?: string;
     portal?: PortalSpawnOpts;
+    body?: SpawnBody;
   }): EntityHandle;
   /** Find a live entity by exact name. */
   find(name: string): EntityHandle | null;
@@ -97,6 +129,17 @@ export interface AudioCaps {
   note(e: NoteEvent): void;
   /** Schedule many at once. */
   notes(es: NoteEvent[]): void;
+}
+
+/**
+ * Environment probe (step 3). Host-registered queries about the composed
+ * world that scripts need for embodied play — ground height for walkers,
+ * nothing more. Answers are plain numbers, never engine references.
+ */
+export interface ProbeCaps {
+  /** Terrain height under (x, z) in world units. Host supplies the sampler
+   *  (e.g. the composed world's zone heightfields); without one it is 0. */
+  ground(x: number, z: number): number;
 }
 
 /** Read-only frame clock. Scripts never see performance.now() or Date. */
@@ -127,6 +170,7 @@ export type CapabilityName =
   | 'audio'         // one-way audio sink
   | 'log'
   | 'field.read'    // step 2: sample the shared environmental ("wind") field
+  | 'probe'         // step 3: environment probes (ground height for walkers)
   // Endgame foundry: six per-domain write controls, one per engine language.
   // The game UI comes later; the capability shape already expresses them.
   | 'field.write.scene'     // TypeScript: terrain/sky scene parameters
@@ -139,7 +183,7 @@ export type CapabilityName =
 /** All capabilities: the default (full-authorship) grant set. */
 export const ALL_CAPABILITIES: readonly CapabilityName[] = Object.freeze([
   'rng', 'time', 'world.spawn', 'world.query', 'world.state', 'events', 'audio',
-  'log', 'field.read',
+  'log', 'field.read', 'probe',
   'field.write.scene', 'field.write.genesis', 'field.write.biome',
   'field.write.tempo', 'field.write.light', 'field.write.presence',
 ] as const);
@@ -166,6 +210,9 @@ export interface Caps {
   /** Shared environmental field (step 2). Read-only wind sampling for the
    *  lower tiers; the six per-domain foundry writes for the top tier. */
   readonly field: FieldCaps;
+  /** Environment probe (step 3): terrain height for walkers. Requires the
+   *  'probe' grant; the host registers the sampler. */
+  readonly probe: ProbeCaps;
 }
 
 /**
@@ -238,7 +285,7 @@ export interface ScriptDef {
  * supplies a SceneNode-backed one. The backend is NEVER exposed to scripts.
  */
 export interface EntityBackend {
-  spawn(name: string, initial: TransformData): number; // returns entity id
+  spawn(name: string, initial: TransformData, opts?: { body?: SpawnBody }): number; // returns entity id
   destroy(id: number): void;
   getTransform(id: number): TransformData | null; // null once destroyed
   setTransform(id: number, t: TransformData): void;

@@ -161,11 +161,18 @@ export class GlobalField {
     return this.snapshot();
   }
 
-  /** The 7th lever: feed the player's embodied state into the field. */
+  /**
+   * The 7th lever: feed the player's embodied state into the field.
+   *
+   * Player state is a LIVE sample-time input to the wind field (the wake
+   * term is evaluated per sample), not a derivation parameter — so it does
+   * NOT bump the field revision. Bumping it here used to invalidate every
+   * zone's derivations each frame, forcing needless terrain rebuilds in
+   * hosts that re-derive on revision changes (and letting the player's
+   * momentary position leak into the anchor-mean probes).
+   */
   setPlayerState(p: PlayerState | null): void {
     this.windField.setPlayerState(p);
-    this.revision++;
-    this.notify('wind.seed');
   }
 
   onChange(fn: Listener): () => void {

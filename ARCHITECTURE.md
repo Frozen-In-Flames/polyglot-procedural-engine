@@ -76,6 +76,22 @@ cooperation. That visible pipeline IS the v1 deliverable, as much as the world i
   capability-closure, not malicious-actor containment. Reference scripts
   port the C# `ScriptProvider` behaviors (float bob+spin; bit-exact arp+hats
   composition).
+- **games/first-light** (V4 step 3) — the proof game: a first-person
+  perception game (gather embers, hidden attunement score, a gust-gated
+  secret portal) plus a foundry endgame (six in-world levers, one per
+  language/domain, writing live through `field.write.*` grants; the
+  player's own motion stirs the field — the 7th lever). Written as an
+  external developer would write it: game code lives in
+  `games/first-light/` and touches only the public API (`src/script`,
+  `src/world`, engine public surface). Every engine gap became an API fix
+  in `src/` instead of a workaround: procedural `body` descriptors on
+  `world.spawn` (visible things, zero assets), script-portal
+  auto-adoption in `ComposedWorld`, `caps.probe.ground` terrain sampling,
+  `RuntimeOptions.onEvent` host event tap. Renderer fix: frustum culling
+  no longer drops meshes whose bounding sphere contains the camera.
+  `GlobalField.setPlayerState` no longer bumps the field revision
+  (player state is a live sample-time input, not a derivation parameter).
+  See `games/first-light/README.md`.
 - **world** (V4 step 2) — world composition over one shared seeded wind
   field. Zone descriptors are plain JSON (seed + generator params + bounds +
   wind weights + portals), validated on load; per-zone wind derives from the
