@@ -92,6 +92,25 @@ cooperation. That visible pipeline IS the v1 deliverable, as much as the world i
   `GlobalField.setPlayerState` no longer bumps the field revision
   (player state is a live sample-time input, not a derivation parameter).
   See `games/first-light/README.md`.
+- **build** (V5) — in-session build tools: the instrument, not an
+  editor. Field brushes (seeded, bounded, multi-directional local wind
+  offsets, pure functions of seed and params), rhythm tuning (convex blend of
+  global tempo with local regions), entity seeding (`rock-cluster`,
+  `light-well`, `ember-vent` grown from seeds, never placed), live behavior
+  scripting (fresh `node:vm` realm on the host, `Math.random` throws,
+  Proxy-membraned capability facades). Fluent `Instrument` API; every action
+  emits one `BuildOp` on the shared op schema.
+- **state** (V5) — distributed state graph: operation-based deterministic
+  replication with no central authority. Hash-chained op log, total order
+  (t, actor, seq) as the conflict-resolution law, idempotent apply,
+  snapshot/restore, `stateHash` convergence proofs. One seed, one ocean:
+  foreign-seed ops are rejected.
+- **games/workshop** (V5 step 3) — the session proof: a scripted live build
+  session on the public surface only (terrain zone, sky, 320 wind-driven
+  embers). Six deterministic phases with byte-identical screenshots:
+  pristine, brush bends the wind, seed becomes stone, rhythm quickens,
+  stone learns to breathe, two builders one ocean (two StateNodes, shuffled
+  delivery, identical stateHash). Zero console errors.
 - **world** (V4 step 2) — world composition over one shared seeded wind
   field. Zone descriptors are plain JSON (seed + generator params + bounds +
   wind weights + portals), validated on load; per-zone wind derives from the

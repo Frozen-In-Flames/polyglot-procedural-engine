@@ -3,6 +3,57 @@
 All notable changes to the xr-engine. The live demo at
 https://frozen-in-flames.github.io/xr-engine/ tracks the latest release.
 
+## [0.5.0] — V5 (2026-10-11)
+
+Build inside the play session. V4 proved a player can become a dev; V5 makes
+every session a dev session. Not an editor, an instrument: you do not
+construct the world, you play it.
+
+### In-session build tools (`src/build/`)
+
+The instrument worn on the hands, invoking only the V4 capability API:
+
+- **Field brush**: bend the local wind. Seeded, bounded, deterministic local
+  offsets layered over the global field, multi-directional with varying
+  force. Pure function of (seed, params); cosine falloff, hard zero at the
+  radius edge.
+- **Rhythm tuning**: blend the live global tempo with overlapping local
+  regions (convex combination, always bounded).
+- **Entity seeding**: `rock-cluster`, `light-well`, `ember-vent`. Plant a
+  seed and the math grows the entity. Never places an asset; there are none.
+- **Live behavior scripting**: compile and attach behavior scripts to living
+  entities in-session. Fresh `node:vm` realm on the host (empty global, no
+  process/require/fetch/timers, `Math.random` throws per the Cause-and-Effect
+  law, Math/JSON frozen, 500ms compile timeout), Proxy membrane sealing
+  capability facades. Malicious scripts contained, engine keeps running.
+- **Fluent Instrument API**: `brush.at(x,z).with({...})`,
+  `seed(kind).at(x,y,z).plant(seed)`, `behavior.on(id).attach(src)`.
+  Every action emits one BuildOp on the shared op schema.
+
+### Distributed state graph (`src/state/`)
+
+Operation-based deterministic replication. No central authority.
+
+- Hash-chained op log (`prev` = FNV-1a of the previous op); `GENESIS_PREV`
+  starts every actor chain.
+- The total order **(t, actor, seq)** — Lamport time, actor id, per-actor
+  sequence — IS the conflict resolution. Two ops on the same target both
+  apply; the later in the order wins on every node, every time.
+- Idempotent apply, snapshot/restore, `stateHash` convergence proofs.
+- Session-membership rule: foreign-seed ops rejected, one seed one ocean.
+
+### Session proof (`games/workshop/`)
+
+A live build session on the public surface only: one terrain zone, sky dome,
+320 ember particles sampling the wind (global field + brush offsets from the
+op log, the honest causal chain). Six deterministic phases, byte-identical
+screenshots across runs: pristine world, the brush bends the wind, a seed
+becomes stone, the rhythm quickens, the stone learns to breathe, two
+builders one ocean (two StateNodes, shuffled delivery, identical stateHash).
+Zero console errors.
+
+95/95 TypeScript tests, 55/55 Python tests, zero new runtime dependencies.
+
 ## [Unreleased] — V4 step 3 in progress (2026-10-10)
 
 FIRST LIGHT: one real game, built as an external developer would build it
