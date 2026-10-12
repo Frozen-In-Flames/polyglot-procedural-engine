@@ -29,3 +29,10 @@ export { createRegistry, appendEntry, entryFromMint, verifyRegistry } from './re
 
 // V6 step 5: the chain adapter interface V7 will implement (types only).
 export type { AnchorReceipt, AnchorCost, ChainAdapter } from './chain.js';
+
+// V7: the UI-agnostic anchoring flow state machine (pure logic).
+export type { AnchorFlowState, AnchorTransition, AnchorFlowOpts } from './flow.js';
+export {
+  AnchorFlow, FAIL_USER_CANCELLED, FAIL_ANCHOR_TIMEOUT,
+  FAIL_RECEIPT_UNVERIFIED, FAIL_RECEIPT_WRONG_MINT,
+} from './flow.js';

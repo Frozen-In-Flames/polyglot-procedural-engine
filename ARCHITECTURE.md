@@ -113,7 +113,15 @@ cooperation. That visible pipeline IS the v1 deliverable, as much as the world i
   no chain, no gas. Rights: license terms (`use`/`remix`/`commercial`/
   `resell`) enforced by `RightsGate` at the spawn/remix/resell seams.
   Registry: append-only signed list (`registry/registry.json`), hosted
-  free. Chain adapter: types-only interface for V7 (`ChainAdapter`,
+  free. V7 adds the chain layer: `evm.ts` implements `ChainAdapter` with
+  raw JSON-RPC and zero new dependencies (EIP-1193 connect, EIP-1559/legacy
+  gas quotes as decimal strings, ERC-721-style metadata from the manifest,
+  contract-mint and calldata anchor modes, `verifyAnchor` re-reads the
+  chain); `flow.ts` is a UI-agnostic anchoring state machine that cannot
+  pass cost confirmation without explicit user confirm; the workshop demo
+  has an opt-in anchor panel that lazy-loads the adapter. The core
+  `src/own/index.ts` surface stays chain-free. Platform spends $0; the
+  user pays their own gas only on explicit opt-in. Chain adapter: types-only interface for V7 (`ChainAdapter`,
   `AnchorReceipt`); the engine never depends on a chain.
 - **games/workshop** (V5 step 3) — the session proof: a scripted live build
   session on the public surface only (terrain zone, sky, 320 wind-driven

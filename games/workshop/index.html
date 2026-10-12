@@ -29,6 +29,43 @@
       #convergence .node { font-family: monospace; font-size: 11px; color: #cbd5e1; padding: 4px 0; border-top: 1px solid #1e293b; }
       #convergence .node .h { color: #fbbf24; }
       #convergence .verdict { margin-top: 8px; font-size: 11px; font-weight: 800; letter-spacing: 0.06em; color: #4ade80; }
+      #anchor-chip {
+        position: fixed; top: 12px; left: 12px; z-index: 20;
+        background: rgba(10, 14, 24, 0.88); border: 1px solid #1e293b;
+        border-radius: 999px; padding: 8px 14px; color: #e2e8f0;
+        font-size: 12px; font-weight: 700; letter-spacing: 0.06em; cursor: pointer;
+      }
+      #anchor-chip:hover { border-color: #fbbf24; color: #fde68a; }
+      #anchor-panel {
+        display: none; position: fixed; top: 56px; left: 12px; z-index: 20;
+        background: rgba(10, 14, 24, 0.94); border: 1px solid #1e293b;
+        border-radius: 12px; padding: 14px 16px; color: #e2e8f0; width: 340px;
+        max-height: calc(100% - 140px); overflow-y: auto;
+      }
+      #anchor-panel h2 { margin: 0 0 6px; font-size: 12px; font-weight: 800; letter-spacing: 0.08em; color: #fbbf24; }
+      #anchor-panel p { margin: 6px 0; font-size: 12px; line-height: 1.5; color: #cbd5e1; }
+      #anchor-panel label { display: block; margin: 8px 0 2px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: #94a3b8; }
+      #anchor-panel input, #anchor-panel select {
+        width: 100%; box-sizing: border-box; background: #0f172a; color: #e2e8f0;
+        border: 1px solid #1e293b; border-radius: 8px; padding: 7px 9px; font-size: 12px;
+      }
+      #anchor-panel button {
+        display: block; width: 100%; margin-top: 10px; background: #1e293b; color: #e2e8f0;
+        border: 1px solid #334155; border-radius: 8px; padding: 9px 10px;
+        font-size: 12px; font-weight: 700; letter-spacing: 0.04em; cursor: pointer;
+      }
+      #anchor-panel button:hover:not(:disabled) { border-color: #fbbf24; color: #fde68a; }
+      #anchor-panel button:disabled { opacity: 0.45; cursor: default; }
+      #anchor-panel button.danger { border-color: #7f1d1d; color: #fca5a5; }
+      #anchor-steps { list-style: none; margin: 8px 0 0; padding: 0; font-size: 11px; font-family: monospace; }
+      #anchor-steps li { padding: 3px 0; color: #64748b; border-top: 1px solid #1e293b; }
+      #anchor-steps li.hit { color: #4ade80; }
+      #anchor-steps li.bad { color: #f87171; }
+      #anchor-msg { font-size: 12px; margin-top: 8px; color: #fca5a5; white-space: pre-wrap; word-break: break-word; }
+      #anchor-msg.ok { color: #4ade80; }
+      #anchor-receipt { font-family: monospace; font-size: 11px; color: #cbd5e1; margin-top: 8px; word-break: break-all; }
+      #anchor-receipt .k { color: #94a3b8; }
+      #anchor-cost { font-size: 14px; font-weight: 800; color: #fde68a; margin-top: 8px; }
       #err {
         display: none; position: fixed; inset: auto 12px 12px 12px; z-index: 50;
         background: rgba(80, 10, 10, 0.92); color: #fecaca; font-size: 12px;
@@ -47,6 +84,38 @@
       <div class="verdict" id="node-verdict"></div>
     </div>
     <div id="err"></div>
+    <div id="anchor-chip">ANCHOR ON CHAIN</div>
+    <div id="anchor-panel">
+      <h2>ANCHOR ON CHAIN</h2>
+      <p>Anchoring writes only the mint id and license summary to the chain you pick. The full math stays off chain, free to copy. The platform takes no fee: you pay your own gas, and nothing is submitted until you confirm.</p>
+      <div id="anchor-mint-step">
+        <label for="anchor-author">AUTHOR NAME</label>
+        <input id="anchor-author" type="text" value="workshop-builder" maxlength="80" />
+        <button id="anchor-mint">MINT CURRENT WORK</button>
+        <p id="anchor-mint-info"></p>
+      </div>
+      <div id="anchor-chain-step" style="display:none">
+        <label for="anchor-chain">CHAIN</label>
+        <select id="anchor-chain">
+          <option value="eip155:1">Ethereum</option>
+          <option value="custom">Custom EVM</option>
+        </select>
+        <label for="anchor-chainid" id="anchor-chainid-label" style="display:none">CHAIN ID</label>
+        <input id="anchor-chainid" type="text" placeholder="eip155:137" autocomplete="off" style="display:none" />
+        <label for="anchor-rpc">RPC URL (OPTIONAL)</label>
+        <input id="anchor-rpc" type="text" placeholder="blank uses your browser wallet" autocomplete="off" />
+        <label for="anchor-contract">CONTRACT ADDRESS (OPTIONAL)</label>
+        <input id="anchor-contract" type="text" placeholder="0x..." autocomplete="off" />
+        <button id="anchor-connect">CONNECT WALLET</button>
+        <div id="anchor-cost"></div>
+        <button id="anchor-confirm" style="display:none">CONFIRM ANCHOR</button>
+        <button id="anchor-cancel" class="danger" style="display:none">CANCEL</button>
+      </div>
+      <ul id="anchor-steps"></ul>
+      <div id="anchor-msg"></div>
+      <div id="anchor-receipt"></div>
+      <button id="anchor-close" style="display:none">CLOSE</button>
+    </div>
     <script type="module" src="/main.ts"></script>
   </body>
 </html>

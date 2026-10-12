@@ -3,6 +3,47 @@
 All notable changes to the xr-engine. The live demo at
 https://frozen-in-flames.github.io/xr-engine/ tracks the latest release.
 
+## [0.7.0] — V7 (2026-10-12)
+
+Bring your own chain. V6 built the complete ownership system off-chain;
+V7 lets the user anchor it on-chain wherever they choose. The engine stays
+chain-agnostic the way it stays NVIDIA-agnostic: the platform spends $0,
+the user pays their own gas only when they choose to mint on-chain, and
+if the RPC is down the engine and all off-chain ownership keep working.
+
+### EVM adapter (`src/own/evm.ts`)
+
+Implements the V6 `ChainAdapter` interface with raw JSON-RPC and zero new
+dependencies. EIP-1193 wallet connect (the engine stores no keys, ever),
+gas estimation with EIP-1559 and legacy support quoted as decimal strings
+before anything is submitted. ERC-721-style metadata is built from the
+manifest; the token URI points at the manifest content hash while the full
+manifest stays off-chain where copying is free. Two honest anchor modes:
+contract mint (hand-rolled Keccak-256 and ABI encoding, validated against
+published vectors; tokenId parsed from Transfer logs, never invented) and
+calldata anchoring (a 0-value transaction to self carrying the mint id, for
+use with no contract). `verifyAnchor` re-reads the chain and returns false
+on mismatch instead of throwing. Kept out of `src/own/index.ts`: the core
+surface stays chain-free and the adapter loads only when the user opts in.
+
+### Platform-easy anchoring flow (`src/own/flow.ts`, workshop panel)
+
+A UI-agnostic state machine (`idle` to `connecting` to `estimating` to
+`awaiting-confirm` to `submitting` to `confirming` to `done`/`failed`) that
+cannot advance past cost confirmation without an explicit user confirm:
+the user always sees the price before paying it. The workshop demo gains
+an opt-in "anchor on chain" panel (chain picker, wallet connect, cost
+display, receipt view) that lazy-loads the adapter through a dynamic
+import only when opened. Nothing is signed or spent silently, ever.
+
+### Verification
+
+175/175 TypeScript tests green (32 new: 20 EVM adapter, 12 flow),
+55/55 Python tests green, `tsc` clean, zero new runtime dependencies.
+Adapter tests run against a mock JSON-RPC transport: no real chain, no
+real gas, $0. Honestly remaining: a real on-chain anchor (needs the user's
+own wallet and their own gas), real headset test, real DLSS frame capture.
+
 ## [0.6.0] — V6 (2026-10-12)
 
 Ownership, fully off-chain, at $0. V5 made building real; V6 makes owning

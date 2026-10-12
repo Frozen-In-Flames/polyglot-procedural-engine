@@ -38,6 +38,20 @@ import {
   validateOpShape, validatePayload,
   type BuildOp, type JSONValue,
 } from '../../src/state/index.js';
+// V7 anchoring panel: pure flow logic (statically bundled) plus the
+// chain adapter interface. The concrete adapter module is dynamic-imported
+// ONLY when the user opens the panel, so it never enters the core bundle.
+import { AnchorFlow } from '../../src/own/flow.js';
+import type { ChainAdapter } from '../../src/own/chain.js';
+// Type-only: erased at compile, so the concrete adapter module still
+// loads exclusively through the dynamic import below.
+import type { EvmAdapterConfig, Eip1193Provider } from '../../src/own/evm.js';
+import { buildProvenance } from '../../src/own/provenance.js';
+import {
+  LICENSE_OPEN, createMint, verifyMint,
+  type MintManifest,
+} from '../../src/own/mint.js';
+import { generateKeypair, toHex } from '../../src/own/ed25519.js';
 import { makeBehaviorDef } from './behavior-browser.js';
 
 /** Fixed session seed: one seed, one ocean. */
@@ -401,6 +415,252 @@ async function main(): Promise<void> {
     ground: (x: number, z: number) => groundAt(x, z),
     simTime: () => tSim,
   };
+
+  // ---- V7 opt-in anchoring panel ----
+  // The concrete chain adapter is loaded ONLY when the user opens this
+  // panel: a dynamic import, never in the core bundle path. The module
+  // shape below matches src/own/evm.ts (the parallel V7 workstream):
+  // an EvmAdapter class taking EvmAdapterConfig, plus browserProvider()
+  // and fetchTransport() helpers. Only these three are assumed.
+  const ADAPTER_MODULE_PATH = '../../src/own/evm.js';
+  interface EvmAdapterModule {
+    EvmAdapter: new (cfg: EvmAdapterConfig) => ChainAdapter;
+    browserProvider: () => Eip1193Provider;
+    fetchTransport: (rpcUrl: string) => Eip1193Provider;
+  }
+  let adapterModulePromise: Promise<EvmAdapterModule> | null = null;
+  function loadAdapterModule(): Promise<EvmAdapterModule> {
+    if (!adapterModulePromise) {
+      const path: string = ADAPTER_MODULE_PATH;
+      // @vite-ignore keeps the concrete adapter out of the core bundle:
+      // it resolves at runtime, only after the user opts in.
+      adapterModulePromise = (import(/* @vite-ignore */ path) as Promise<EvmAdapterModule>)
+        .catch((e: unknown) => {
+          adapterModulePromise = null;
+          throw e;
+        });
+    }
+    return adapterModulePromise;
+  }
+
+  const CHAIN_NAMES: Record<string, string> = {
+    'eip155:1': 'Ethereum',
+    custom: 'Custom EVM',
+  };
+
+  const chipEl = document.getElementById('anchor-chip') as HTMLDivElement;
+  const panelEl = document.getElementById('anchor-panel') as HTMLDivElement;
+  const authorInput = document.getElementById('anchor-author') as HTMLInputElement;
+  const mintBtn = document.getElementById('anchor-mint') as HTMLButtonElement;
+  const mintInfo = document.getElementById('anchor-mint-info') as HTMLParagraphElement;
+  const chainStep = document.getElementById('anchor-chain-step') as HTMLDivElement;
+  const chainSel = document.getElementById('anchor-chain') as HTMLSelectElement;
+  const rpcInput = document.getElementById('anchor-rpc') as HTMLInputElement;
+  const contractInput = document.getElementById('anchor-contract') as HTMLInputElement;
+  const chainIdLabel = document.getElementById('anchor-chainid-label') as HTMLLabelElement;
+  const chainIdInput = document.getElementById('anchor-chainid') as HTMLInputElement;
+  const connectBtn = document.getElementById('anchor-connect') as HTMLButtonElement;
+  const costEl = document.getElementById('anchor-cost') as HTMLDivElement;
+  const confirmBtn = document.getElementById('anchor-confirm') as HTMLButtonElement;
+  const cancelBtn = document.getElementById('anchor-cancel') as HTMLButtonElement;
+  const stepsEl = document.getElementById('anchor-steps') as HTMLUListElement;
+  const msgEl = document.getElementById('anchor-msg') as HTMLDivElement;
+  const receiptEl = document.getElementById('anchor-receipt') as HTMLDivElement;
+  const closeBtn = document.getElementById('anchor-close') as HTMLButtonElement;
+
+  let currentMint: MintManifest | null = null;
+  let flow: AnchorFlow | null = null;
+
+  function panelMsg(text: string, ok = false): void {
+    msgEl.textContent = text;
+    msgEl.className = ok ? 'ok' : '';
+  }
+
+  function showReceipt(): void {
+    const r = flow?.getReceipt();
+    if (!r) return;
+    receiptEl.innerHTML = '';
+    const rows: Array<[string, string]> = [
+      ['tx hash', r.txHash],
+      ['chain', r.chainId],
+      ['token id', r.tokenId],
+      ['mint id', r.manifestId],
+      ['anchored at', r.anchoredAt],
+    ];
+    for (const [k, v] of rows) {
+      const div = document.createElement('div');
+      const ks = document.createElement('span');
+      ks.className = 'k';
+      ks.textContent = k + ': ';
+      div.append(ks, v);
+      receiptEl.appendChild(div);
+    }
+    panelMsg('anchored. The receipt above is your on chain timestamp; the full math stays off chain.', true);
+    confirmBtn.style.display = 'none';
+    cancelBtn.style.display = 'none';
+    closeBtn.style.display = 'block';
+  }
+
+  chipEl.addEventListener('click', () => {
+    panelEl.style.display = 'block';
+    // Lazy-load the adapter module on first open; say plainly if it fails.
+    void loadAdapterModule().catch(() => {
+      panelMsg('the adapter module failed to load. Your mint still works off chain; anchoring needs the module.');
+    });
+  });
+
+  chainSel.addEventListener('change', () => {
+    const custom = chainSel.value === 'custom';
+    chainIdLabel.style.display = custom ? 'block' : 'none';
+    chainIdInput.style.display = custom ? 'block' : 'none';
+  });
+
+  // Step 1: mint the session's current work off chain (free, $0).
+  mintBtn.addEventListener('click', () => {
+    panelMsg('');
+    try {
+      const ops = session.ops;
+      if (ops.length === 0) {
+        throw new Error('shape the world first: advance a phase so there is math to mint');
+      }
+      const provenance = buildProvenance(ops);
+      const entityIds = Object.keys(provenance.entities);
+      if (entityIds.length === 0) {
+        throw new Error('the session has ops but no entities to claim yet');
+      }
+      const author = authorInput.value.trim() || 'workshop-builder';
+      const seedBytes = new Uint8Array(32);
+      crypto.getRandomValues(seedBytes);
+      const kp = generateKeypair(seedBytes);
+      const manifest = createMint({
+        author,
+        authorKey: toHex(kp.publicKey),
+        seed: WS_SEED,
+        entityIds,
+        provenance,
+        ops,
+        license: LICENSE_OPEN,
+        secretKey: kp.secretKey,
+      });
+      const check = verifyMint(manifest);
+      if (!check.ok) throw new Error('mint self-check failed: ' + check.reason);
+      currentMint = manifest;
+      mintInfo.textContent =
+        'minted ' + manifest.id + ' (' + entityIds.length + ' entities, signature verified)';
+      mintInfo.style.color = '#4ade80';
+      chainStep.style.display = 'block';
+      panelMsg('mint ready. Pick a chain and connect your wallet when you want to anchor it.', true);
+    } catch (e) {
+      errors.push('anchor mint: ' + (e as Error).message);
+      panelMsg((e as Error).message);
+    }
+  });
+
+  // Step 2: connect the wallet and get the cost quote. Stops at
+  // awaiting-confirm: nothing is submitted until the user confirms.
+  connectBtn.addEventListener('click', async () => {
+    panelMsg('');
+    if (!currentMint) { panelMsg('mint your current work first'); return; }
+    const preset = chainSel.value;
+    let chainId = preset;
+    if (preset === 'custom') {
+      chainId = chainIdInput.value.trim();
+      if (!chainId) {
+        panelMsg('for a custom chain, enter its chain id (for example eip155:137). The panel never guesses it for you.');
+        return;
+      }
+    }
+    connectBtn.disabled = true;
+    try {
+      const mod = await loadAdapterModule();
+      // No bundled endpoints: the wallet is the user's own (browser
+      // wallet by default), or the RPC URL they paste themselves.
+      const rpcUrl = rpcInput.value.trim();
+      const transport = rpcUrl ? mod.fetchTransport(rpcUrl) : mod.browserProvider();
+      const cfg: EvmAdapterConfig = {
+        chainId,
+        chainName: CHAIN_NAMES[preset] ?? 'Custom EVM',
+        transport,
+      };
+      const contract = contractInput.value.trim();
+      if (contract) cfg.contractAddress = contract;
+      const adapter = new mod.EvmAdapter(cfg);
+      flow = new AnchorFlow(adapter);
+      stepsEl.innerHTML = '';
+      flow.onTransition((t) => {
+        const li = document.createElement('li');
+        li.textContent = t.state + (t.detail ? ' · ' + t.detail : '');
+        li.className = t.state === 'failed' ? 'bad' : (t.state === 'done' ? 'hit' : '');
+        stepsEl.appendChild(li);
+        if (t.state === 'awaiting-confirm') {
+          const cost = flow?.getCost();
+          if (cost) {
+            costEl.textContent = 'cost: ' + cost.amount + ' ' + cost.feeToken;
+            confirmBtn.style.display = 'block';
+            cancelBtn.style.display = 'block';
+            panelMsg(
+              'This is the quoted gas cost. Confirming submits the anchor and spends ' +
+              cost.amount + ' ' + cost.feeToken +
+              ' from your wallet. The engine never spends without this confirmation.',
+              true,
+            );
+          }
+        } else if (t.state === 'done') {
+          showReceipt();
+        } else if (t.state === 'failed') {
+          panelMsg(flow?.getFailureReason() ?? 'anchor failed');
+          confirmBtn.style.display = 'none';
+          cancelBtn.style.display = 'none';
+          closeBtn.style.display = 'block';
+        }
+      });
+      await flow.start(currentMint);
+    } catch (e) {
+      errors.push('anchor connect: ' + (e as Error).message);
+      panelMsg((e as Error).message);
+      connectBtn.disabled = false;
+    }
+  });
+
+  // Step 3: the explicit, informed confirm. The flow machine cannot
+  // reach this state any other way.
+  confirmBtn.addEventListener('click', async () => {
+    if (!flow) return;
+    confirmBtn.disabled = true;
+    cancelBtn.style.display = 'none';
+    panelMsg('submitting. Your wallet may ask for a signature; nothing is final until the chain confirms.', true);
+    try {
+      await flow.confirm();
+    } catch (e) {
+      panelMsg((e as Error).message);
+    }
+    confirmBtn.disabled = false;
+  });
+
+  cancelBtn.addEventListener('click', async () => {
+    if (!flow) return;
+    await flow.cancel();
+    panelMsg('cancelled. Nothing was submitted.', true);
+    confirmBtn.style.display = 'none';
+    cancelBtn.style.display = 'none';
+    closeBtn.style.display = 'block';
+  });
+
+  closeBtn.addEventListener('click', async () => {
+    if (flow) {
+      try { await flow.reset(); } catch { /* already idle */ }
+    }
+    flow = null;
+    panelEl.style.display = 'none';
+    connectBtn.disabled = false;
+    confirmBtn.style.display = 'none';
+    cancelBtn.style.display = 'none';
+    closeBtn.style.display = 'none';
+    costEl.textContent = '';
+    panelMsg('');
+    receiptEl.innerHTML = '';
+    stepsEl.innerHTML = '';
+  });
 
   // ---- Frame loop ----
   const inline = new InlineProvider(camNode, camera);
