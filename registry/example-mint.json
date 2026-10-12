@@ -1,0 +1,65 @@
+{
+  "_note": "DEMO mint signed with a THROWAWAY keypair generated fresh for this example. Do not treat authorKey as anyone's real identity.",
+  "mint": {
+    "v": 1,
+    "kind": "xr-mint",
+    "author": "demo-author",
+    "authorKey": "9f65082745cae5b5444659deb51e7f4197cc544e06c2cdd4a9dc8eddb98d361d",
+    "created": "2026-10-12T06:04:07.462Z",
+    "seed": 20261012,
+    "entityIds": [
+      "b1",
+      "s1"
+    ],
+    "provenanceHash": "fe179c7e",
+    "ops": [
+      {
+        "actor": "demo-author",
+        "op": "build.brush",
+        "payload": {
+          "heading": 1.2,
+          "id": "b1",
+          "pos": [
+            1,
+            2,
+            3
+          ],
+          "radius": 4,
+          "strength": 0.5
+        },
+        "prev": "genesis",
+        "seed": 20261012,
+        "seq": 0,
+        "t": 1,
+        "v": 1
+      },
+      {
+        "actor": "demo-author",
+        "op": "build.seed",
+        "payload": {
+          "id": "s1",
+          "kind": "spire",
+          "pos": [
+            10,
+            0,
+            10
+          ],
+          "seed": 42
+        },
+        "prev": "demo-author-prev-0",
+        "seed": 20261012,
+        "seq": 1,
+        "t": 2,
+        "v": 1
+      }
+    ],
+    "license": {
+      "use": true,
+      "remix": true,
+      "commercial": true,
+      "resell": true
+    },
+    "id": "70c64b98",
+    "signature": "7800c36666afdc3dc795f5b942d8966fcbb7e33c4c86e998e61b782d460abc9add50e61320b4ea7a762927a37a983fddf989d8c211af6464879da2178b875206"
+  }
+}

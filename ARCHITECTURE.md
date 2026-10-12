@@ -105,6 +105,16 @@ cooperation. That visible pipeline IS the v1 deliverable, as much as the world i
   (t, actor, seq) as the conflict-resolution law, idempotent apply,
   snapshot/restore, `stateHash` convergence proofs. One seed, one ocean:
   foreign-seed ops are rejected.
+- **own** (V6) — off-chain ownership, $0 budget, zero new dependencies.
+  Provenance graph (pure functions over the op log: entity to author to
+  creation ops, content-hashed, idempotent). Signed minting: Ed25519
+  manifests (vendored pure-TypeScript Ed25519 + SHA-512, RFC 8032 verified,
+  cross-checked against Node crypto), portable JSON, verifiable by anyone,
+  no chain, no gas. Rights: license terms (`use`/`remix`/`commercial`/
+  `resell`) enforced by `RightsGate` at the spawn/remix/resell seams.
+  Registry: append-only signed list (`registry/registry.json`), hosted
+  free. Chain adapter: types-only interface for V7 (`ChainAdapter`,
+  `AnchorReceipt`); the engine never depends on a chain.
 - **games/workshop** (V5 step 3) — the session proof: a scripted live build
   session on the public surface only (terrain zone, sky, 320 wind-driven
   embers). Six deterministic phases with byte-identical screenshots:

@@ -3,6 +3,55 @@
 All notable changes to the xr-engine. The live demo at
 https://frozen-in-flames.github.io/xr-engine/ tracks the latest release.
 
+## [0.6.0] — V6 (2026-10-12)
+
+Ownership, fully off-chain, at $0. V5 made building real; V6 makes owning
+real. The arc: V1 proved the math, V4 proved the game, V5 proved the
+building, V6 proves the ownership. See it, play it, build it, own it.
+
+### Provenance graph (`src/own/provenance.ts`)
+
+Every entity traces to its author and the operations that created it. Pure
+functions over the V5 op log: entity to author to creation ops to
+modification history, content-hashed, idempotent under replay and shuffle.
+The world remembers whose hands shaped it.
+
+### Signed minting, off-chain (`src/own/mint.ts`, `ed25519.ts`, `sha512.ts`)
+
+A mint is a signed manifest: author, author key, creation ops, content hash,
+license terms, timestamp. Ed25519 signatures from a vendored pure-TypeScript
+implementation (zero new dependencies, runs identically in browser and
+node), verified against RFC 8032 test vectors and cross-checked both ways
+against Node's built-in crypto. Portable JSON, verifiable by anyone, no
+chain, no gas. `verifyMint` never throws on hostile input.
+
+### Rights the runtime respects (`src/own/rights.ts`)
+
+License terms (`use`, `remix`, `commercial`, `resell`) travel in the
+manifest, with presets `LICENSE_OPEN`, `LICENSE_NONCOMMERCIAL`,
+`LICENSE_PERSONAL`. `RightsGate` enforces them at the spawn/remix/resell
+seams: a license that is not enforced is a badge.
+
+### Public registry (`src/own/registry.ts`, `registry/registry.json`)
+
+Append-only signed list of minted works, hosted free in the repo. Entries
+sorted by mint id for deterministic bytes; duplicate mint ids rejected;
+the registry signature covers the whole list.
+
+### Chain adapter interface (`src/own/chain.ts`, designed, NOT built)
+
+Types only: `ChainAdapter` (`connect`, `estimateCost`, `anchor`,
+`verifyAnchor`) plus `AnchorReceipt`. The engine never depends on a chain;
+V7 implements one adapter per chain, the user picks, the user pays their
+own gas, the platform stays $0.
+
+### Verification
+
+- `npx tsc` clean, `npm test` 143/143 green (48 new V6 tests: 9
+  provenance, 6 SHA-512, 16 Ed25519, 17 mint/rights/registry).
+- Zero new runtime dependencies. No node builtins in the runtime modules.
+- Not in V6: anything on-chain, wallet code, a marketplace.
+
 ## [0.5.0] — V5 (2026-10-11)
 
 Build inside the play session. V4 proved a player can become a dev; V5 makes

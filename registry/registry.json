@@ -1,0 +1,18 @@
+{
+  "v": 1,
+  "entries": [
+    {
+      "mintId": "70c64b98",
+      "authorKey": "9f65082745cae5b5444659deb51e7f4197cc544e06c2cdd4a9dc8eddb98d361d",
+      "author": "demo-author",
+      "registeredAt": "2026-10-12T06:04:07.462Z",
+      "license": {
+        "use": true,
+        "remix": true,
+        "commercial": true,
+        "resell": true
+      }
+    }
+  ],
+  "signature": "5946148f976a8cfba362086b72e6ac7f34610f2f9815b742a47e21451cd581ba8c70d7c3fac9df29a27d50d4cae4dd46a2c17af110b2378d991c2190e7b5290f"
+}
