@@ -14,5 +14,5 @@
     "pretest": "tsc --outDir dist-test --rootDir . --module nodenext --moduleResolution nodenext --target es2020 --lib es2020,dom,dom.iterable --strict --skipLibCheck test/audio.test.ts test/core.test.ts test/physics.test.ts test/wasm.test.ts test/inverse.test.ts test/script.test.ts test/world.test.ts test/first-light.test.ts test/state.test.ts test/build.test.ts test/own-provenance.test.ts test/own-sha512.test.ts test/own-ed25519.test.ts test/own-mint.test.ts"
   },
   "type": "module",
-  "version": "0.5.0"
+  "version": "0.6.0"
 }
