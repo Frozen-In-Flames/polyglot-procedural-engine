@@ -54,7 +54,7 @@ Zero console errors.
 
 95/95 TypeScript tests, 55/55 Python tests, zero new runtime dependencies.
 
-## [Unreleased] — V4 step 3 in progress (2026-10-10)
+## [0.4.0] — V4 step 3 in progress (2026-10-10)
 
 FIRST LIGHT: one real game, built as an external developer would build it
 — game code lives in `games/first-light/` and touches ONLY the public API
@@ -134,7 +134,7 @@ zero console errors; screenshots in `games/first-light/dist-shots/`.
 - The sun is aimed from the front-top so camera-facing slopes read in
   diffuse instead of ambient + a specular streak.
 
-## [Unreleased] — V4 step 2 in progress (2026-10-10)
+## [0.4.0] — V4 step 2 in progress (2026-10-10)
 
 World composition: independently authored zones stitch into one coherent
 world over a single shared seeded wind field. Local generation, global
@@ -224,7 +224,7 @@ coherence — the architectural law made mechanical.
   loader's stitched set — CLOSED in step 3 via
   `ComposedWorld.adoptScriptPortals()`.
 
-## [Unreleased] — V4 step 1 (2026-10-10)
+## [0.4.0] — V4 step 1 (2026-10-10)
 
 ### Rendering closeouts (stretch, parallel lane)
 - `python/xrgen/geometry.py`: geometry-reconstruction prototype
