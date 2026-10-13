@@ -1,4 +1,4 @@
-"""xrgen — Python ML/procedural generation provider for the xr-engine.
+"""xrgen — Python ML/procedural generation provider for the Polyglot Procedural Engine (PPE).
 
 Pure functions of (seed, params). Standard library only, so this runs
 anywhere CPython runs: embedded next to C++ via the C API, spawned as a

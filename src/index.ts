@@ -1,4 +1,4 @@
-// xr-engine public surface (v1).
+// Polyglot Procedural Engine (PPE) public surface (v1).
 export * from './math/vec.js';
 export * from './math/mat.js';
 export { fromAxisAngle, toMat4, slerp, qIdentity, multiply as quatMultiply } from './math/quat.js';

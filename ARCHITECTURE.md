@@ -1,4 +1,4 @@
-# XR Engine — Architecture (v1, due Nov 10 2026)
+# Polyglot Procedural Engine (PPE) — Architecture (v1, due Nov 10 2026)
 
 Personal engine for Aries. Not a company product. One vision, sliced so v1 actually ships.
 

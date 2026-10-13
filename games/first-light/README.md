@@ -1,6 +1,6 @@
 # FIRST LIGHT
 
-A playable first-person game built **only** on the xr-engine public API
+A playable first-person game built **only** on the Polyglot Procedural Engine (PPE) public API
 (`src/script`, `src/world`, and the engine's public surface). No engine
 internals, no workarounds: every gap the game needed became a documented
 API fix in `src/` instead. This is the V4 proof: an external developer

@@ -1,7 +1,7 @@
-# xr-engine
+# Polyglot Procedural Engine
 
-Personal procedural VR/AR/MR/XR engine. Zero asset files: every visual and
-sound is generated in code at runtime. The point of v1 is the **proof** — all
+**PPE** — a personal procedural VR/AR/MR/XR engine. Zero asset files: every visual
+and sound is generated in code at runtime. The point of v1 is the **proof** — all
 languages working together to replace assets entirely.
 
 ## The polyglot pipeline (v1)

@@ -1,7 +1,7 @@
 # Changelog
 
-All notable changes to the xr-engine. The live demo at
-https://frozen-in-flames.github.io/xr-engine/ tracks the latest release.
+All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
+https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
 ## [0.7.0] — V7 (2026-10-12)
 
@@ -462,7 +462,7 @@ Engine depth: physics core, richer procedural generation.
 
 ## [0.1.0] — V1 (2026-10-10)
 
-First public release. Live demo: https://frozen-in-flames.github.io/xr-engine/
+First public release. Live demo: https://frozen-in-flames.github.io/polyglot-procedural-engine/
 
 ### What shipped
 - TypeScript host: scene graph, procedural materials, WebGL2 renderer, WebXR
