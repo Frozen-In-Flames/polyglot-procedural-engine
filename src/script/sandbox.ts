@@ -100,6 +100,48 @@ export function sanitizeNote(e: {
   return deepFreeze(out);
 }
 
+const SFX_KINDS = ['pluck', 'ping', 'riser', 'gust'] as const;
+
+/** Validate a script sfx() request: schema-checked, range-clamped. */
+export function sanitizeSfxSpec(s: {
+  kind: string; pos: unknown; gain: number; seed?: number; freq?: number;
+}): { kind: 'pluck' | 'ping' | 'riser' | 'gust'; pos: [number, number, number]; gain: number; seed?: number; freq?: number } {
+  if (s === null || typeof s !== 'object') throw new Error('script: sfx spec must be an object');
+  if (!(SFX_KINDS as readonly string[]).includes(s.kind)) {
+    throw new Error('script: sfx.kind must be pluck|ping|riser|gust');
+  }
+  const pos = sanitizeVec3(s.pos as [number, number, number], 'sfx.pos');
+  const gain = checkFinite(s.gain, 'sfx.gain');
+  if (gain < 0 || gain > 1) throw new Error('script: sfx.gain out of range');
+  const out: { kind: 'pluck' | 'ping' | 'riser' | 'gust'; pos: [number, number, number]; gain: number; seed?: number; freq?: number } =
+    { kind: s.kind as 'pluck' | 'ping' | 'riser' | 'gust', pos, gain };
+  if (s.seed !== undefined) out.seed = checkFinite(s.seed, 'sfx.seed') >>> 0;
+  if (s.freq !== undefined) {
+    const f = checkFinite(s.freq, 'sfx.freq');
+    if (!(f > 0)) throw new Error('script: sfx.freq must be positive');
+    out.freq = f;
+  }
+  return deepFreeze(out);
+}
+
+/** Validate a script mood() push: every field range-clamped. */
+export function sanitizeMood(p: {
+  energy?: number; tension?: number; brightness?: number; tempo?: number;
+}): { energy?: number; tension?: number; brightness?: number; tempo?: number } {
+  if (p === null || typeof p !== 'object') throw new Error('script: mood must be an object');
+  const out: { energy?: number; tension?: number; brightness?: number; tempo?: number } = {};
+  const c01 = (v: number | undefined, what: string): number | undefined =>
+    v === undefined ? undefined : Math.max(0, Math.min(1, checkFinite(v, what)));
+  out.energy = c01(p.energy, 'mood.energy');
+  out.tension = c01(p.tension, 'mood.tension');
+  out.brightness = c01(p.brightness, 'mood.brightness');
+  if (p.tempo !== undefined) out.tempo = Math.max(0.5, Math.min(2, checkFinite(p.tempo, 'mood.tempo')));
+  for (const k of Object.keys(out) as (keyof typeof out)[]) {
+    if (out[k] === undefined) delete out[k];
+  }
+  return deepFreeze(out);
+}
+
 /** Assert a value graph reachable from `root` contains none of the given
  *  constructor identities (used by tests to prove no internals leak). */
 export function graphContains(root: unknown, ctors: Function[], seen = new Set<object>()): Function | null {

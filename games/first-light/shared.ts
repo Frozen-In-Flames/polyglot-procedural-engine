@@ -19,6 +19,13 @@ export const ATTUNE_DOMAINS = [
 
 /** The dark gate (world coordinates; ember-reach local [0,4,-40]). */
 export const GATE_POS: [number, number, number] = [-140, 4, -40];
+/**
+ * The gate's root frequency (Hz). The gate script voices its resonance
+ * chord (174.6 / 261.6 / 349.2 / 523.3) on this root; the attunement script
+ * publishes it to world state ('gate:rootFreq') so the V8 conductor can
+ * retune every layer to a just-intonation lattice on it at resonance.
+ */
+export const GATE_ROOT_FREQ = 174.6;
 /** Player spawn (world): in ember-reach, facing the gate. */
 export const PLAYER_SPAWN: [number, number, number] = [-140, 2, -16];
 

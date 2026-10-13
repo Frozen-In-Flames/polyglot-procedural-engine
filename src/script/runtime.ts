@@ -17,13 +17,14 @@ import type { FieldDomain } from '../world/types.js';
 import type {
   Caps, CapabilityName, EntityBackend, EntityHandle, EventCaps, JSONValue, NoteEvent,
   ScriptDef, TimeCaps, TransformData, WorldCaps, AudioCaps, FieldCaps, ProbeCaps,
-  PortalSpawnOpts, SpawnBody,
+  PortalSpawnOpts, SpawnBody, SfxSpec, MoodPartial,
 } from './api.js';
 import { ALL_CAPABILITIES } from './api.js';
 import { buildBody } from './bodies.js';
 import { Mesh } from '../scene/components.js';
 import {
-  copyJson, deepFreeze, exportTransform, sanitizeBody, sanitizeNote, sanitizeTransform, sanitizeVec3, checkFinite,
+  copyJson, deepFreeze, exportTransform, sanitizeBody, sanitizeNote, sanitizeSfxSpec,
+  sanitizeMood, sanitizeTransform, sanitizeVec3, checkFinite,
 } from './sandbox.js';
 
 /** Mix a runtime seed with a script name into a 32-bit stream seed. */
@@ -180,6 +181,10 @@ export class ScriptRuntime {
   private globalHandlers = new Map<string, Set<{ inst: ScriptInstance; fn: Handler }>>();
   private worldState = new Map<string, JSONValue>();
   private audioSink: NoteEvent[] = [];
+  /** One-shot SFX requests (caps.audio.sfx). Host drains, validates, plays. */
+  private sfxSink: SfxSpec[] = [];
+  /** Accumulated mood partials (caps.audio.mood). Host consumes per frame. */
+  private moodState: MoodPartial = {};
   private nowT = 0;
   private lastDt = 0;
   private opts: RuntimeOptions;
@@ -281,6 +286,25 @@ export class ScriptRuntime {
   }
 
   get pendingAudio(): number { return this.audioSink.length; }
+
+  /** Host drains one-shot SFX requests (validates, places, plays). Clears the sink. */
+  drainSfx(): SfxSpec[] {
+    const out = this.sfxSink;
+    this.sfxSink = [];
+    return out;
+  }
+
+  get pendingSfx(): number { return this.sfxSink.length; }
+
+  /**
+   * Host consumes accumulated mood partials (one-way adaptive state push).
+   * Returns the merged partial since the last call and clears it.
+   */
+  consumeMood(): MoodPartial {
+    const out = this.moodState;
+    this.moodState = {};
+    return out;
+  }
 
   // ---- host-side entity access (world loader, portals) ----
   //
@@ -467,6 +491,22 @@ export class ScriptRuntime {
       notes(es: NoteEvent[]): void {
         if (!Array.isArray(es)) throw new Error('script: notes needs an array');
         for (const e of es) (audio as AudioCaps).note(e);
+      },
+      // V8 §5.2: positional one-shot request — validated, range-clamped;
+      // the host places and plays. Scripts compose/request, never touch nodes.
+      sfx(spec: SfxSpec): void {
+        require('audio');
+        rt.sfxSink.push(sanitizeSfxSpec(spec as unknown as {
+          kind: string; pos: unknown; gain: number; seed?: number; freq?: number;
+        }) as SfxSpec);
+      },
+      // V8 §5.2: one-way adaptive state push — merged by the host, clamped.
+      mood(partial: MoodPartial): void {
+        require('audio');
+        const clean = sanitizeMood(partial as unknown as {
+          energy?: number; tension?: number; brightness?: number; tempo?: number;
+        });
+        rt.moodState = { ...rt.moodState, ...clean };
       },
     });
 

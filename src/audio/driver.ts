@@ -12,9 +12,15 @@
 //   {"generator": ..., "language": "Python", "seed": 7, "loop_dur": 10.0,
 //    "events": [{"t": 0.0, "dur": 0.5, "freq": 220.0,
 //                "kind": "tone", "gain": 0.2, "pan": 0}, ...]}
-// kinds: "tone" | "pad" | "bass" | "noise". "pan" is optional (-1..1).
+// kinds: "tone" | "pad" | "bass" | "noise" (v1.0) plus V8 additions
+// "pluck" | "ping" | "riser" | "gust" | "granular" (score schema v1.1).
+// "pan" is optional (-1..1). V8 optional event fields: attack (s),
+// decay (s), filterFreq (Hz), reverbSend (0..1) — all range-clamped by
+// validateScore and ignored by renderers that do not understand them.
 
-export type ScoreKind = 'tone' | 'pad' | 'bass' | 'noise';
+export type ScoreKind =
+  | 'tone' | 'pad' | 'bass' | 'noise'
+  | 'pluck' | 'ping' | 'riser' | 'gust' | 'granular';
 
 export interface AudioEvent {
   t: number;      // seconds from loop start
@@ -23,6 +29,10 @@ export interface AudioEvent {
   kind: ScoreKind;
   gain: number;   // 0..1
   pan?: number;   // -1..1, optional
+  attack?: number;     // seconds, 0.001..4 — envelope attack (V8)
+  decay?: number;      // seconds, 0.001..8 — release tail (V8)
+  filterFreq?: number; // Hz, 20..20000 — voice lowpass (V8)
+  reverbSend?: number; // 0..1 — per-event reverb send (V8)
 }
 
 export interface ScoreDoc {
@@ -33,7 +43,17 @@ export interface ScoreDoc {
   events: AudioEvent[];
 }
 
-const KINDS: ScoreKind[] = ['tone', 'pad', 'bass', 'noise'];
+const KINDS: ScoreKind[] = [
+  'tone', 'pad', 'bass', 'noise',
+  'pluck', 'ping', 'riser', 'gust', 'granular',
+];
+
+/** Clamp an optional numeric field; undefined stays undefined. */
+function optClamp(v: unknown, lo: number, hi: number): number | undefined {
+  if (v === undefined) return undefined;
+  if (!isNum(v)) throw new Error('score: optional audio field not a number');
+  return Math.max(lo, Math.min(hi, v));
+}
 
 function isNum(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v);
@@ -63,6 +83,15 @@ export function validateScore(doc: unknown): ScoreDoc {
       kind: ev['kind'] as ScoreKind, gain: ev['gain'],
     };
     if (isNum(ev['pan'])) out.pan = Math.max(-1, Math.min(1, ev['pan']));
+    // V8 optional fields: range-clamped, ignored by renderers that predate them.
+    const attack = optClamp(ev['attack'], 0.001, 4);
+    const decay = optClamp(ev['decay'], 0.001, 8);
+    const filterFreq = optClamp(ev['filterFreq'], 20, 20000);
+    const reverbSend = optClamp(ev['reverbSend'], 0, 1);
+    if (attack !== undefined) out.attack = attack;
+    if (decay !== undefined) out.decay = decay;
+    if (filterFreq !== undefined) out.filterFreq = filterFreq;
+    if (reverbSend !== undefined) out.reverbSend = reverbSend;
     return out;
   });
   return {
@@ -82,10 +111,33 @@ export class ScorePlayer {
   private nextLoop = 0;
   private noiseBuf: AudioBuffer | null = null;
 
+  /**
+   * Optional just-intonation lattice (absolute Hz, ascending). When set,
+   * every event's frequency snaps to the nearest lattice degree in log
+   * space — this is how the conductor performs the resonance retune (§4.3).
+   * Null (default) plays score frequencies as written. Additive: old
+   * behavior is exactly the null case.
+   */
+  lattice: number[] | null = null;
+
   constructor(
     private ctx: AudioContext,
     private dest: AudioNode,
   ) {}
+
+  /** Snap a frequency to the nearest lattice degree (log-domain nearest). */
+  private tuneFreq(f: number): number {
+    const lat = this.lattice;
+    if (!lat || lat.length === 0 || f <= 0) return f;
+    const lf = Math.log2(f);
+    let best = lat[0];
+    let bestD = Math.abs(Math.log2(lat[0]) - lf);
+    for (let i = 1; i < lat.length; i++) {
+      const d = Math.abs(Math.log2(lat[i]) - lf);
+      if (d < bestD) { bestD = d; best = lat[i]; }
+    }
+    return best;
+  }
 
   load(doc: unknown): void {
     this.score = validateScore(doc);
@@ -138,38 +190,104 @@ export class ScorePlayer {
   }
 
   private schedule(e: AudioEvent, when: number): void {
+    const freq = this.tuneFreq(e.freq);
+    const attack = e.attack ?? 0.015;
+    const decay = Math.min(e.decay ?? 0.06, Math.max(0.01, e.dur * 0.6));
+    const peak = Math.max(0.001, e.gain);
     const g = this.ctx.createGain();
     g.gain.setValueAtTime(0.0001, when);
-    g.gain.exponentialRampToValueAtTime(Math.max(0.001, e.gain), when + 0.015);
-    g.gain.exponentialRampToValueAtTime(0.0001, when + e.dur);
+    g.gain.exponentialRampToValueAtTime(peak, when + attack);
+    g.gain.setValueAtTime(peak, when + Math.max(attack, e.dur - decay));
+    g.gain.exponentialRampToValueAtTime(0.0001, when + e.dur + 0.02);
+    // Optional voice lowpass (V8 field); old renderers ignore it.
+    let tail: AudioNode = g;
+    const wireFilter = (type: BiquadFilterType, f: number): BiquadFilterNode => {
+      const flt = this.ctx.createBiquadFilter();
+      flt.type = type; flt.frequency.value = f;
+      flt.connect(tail); tail = flt;
+      return flt;
+    };
     let node: AudioScheduledSourceNode;
-    if (e.kind === 'noise') {
-      const src = this.ctx.createBufferSource();
-      src.buffer = this.ensureNoise();
-      src.loop = true;
-      const f = this.ctx.createBiquadFilter();
-      f.type = 'highpass'; f.frequency.value = 5000;
-      src.connect(f); f.connect(g);
-      node = src;
-    } else {
-      const o = this.ctx.createOscillator();
-      o.type = e.kind === 'bass' ? 'sine' : e.kind === 'pad' ? 'triangle' : 'square';
-      o.frequency.value = e.freq;
-      if (e.kind === 'pad') {
-        const f = this.ctx.createBiquadFilter();
-        f.type = 'lowpass'; f.frequency.value = 1200;
-        o.connect(f); f.connect(g);
-      } else {
-        o.connect(g);
+    switch (e.kind) {
+      case 'noise':
+      case 'gust':
+      case 'granular': {
+        const src = this.ctx.createBufferSource();
+        src.buffer = this.ensureNoise();
+        src.loop = true;
+        const bp = this.ctx.createBiquadFilter();
+        if (e.kind === 'noise') { bp.type = 'highpass'; bp.frequency.value = 5000; }
+        else if (e.kind === 'gust') {
+          // Swell: bandpass sweeps up through the event, gain swells mid-way.
+          bp.type = 'bandpass'; bp.Q.value = 1.2;
+          bp.frequency.setValueAtTime(300, when);
+          bp.frequency.exponentialRampToValueAtTime(2400, when + e.dur);
+        } else {
+          // Granular-ish: highpassed noise chopped by a grain-rate LFO on
+          // a second gain stage (approximates seeded grains at this layer;
+          // true granular voices render in synth.ts / the DSP core).
+          bp.type = 'highpass'; bp.frequency.value = 2500;
+          const chop = this.ctx.createGain();
+          const lfo = this.ctx.createOscillator();
+          lfo.type = 'square'; lfo.frequency.value = 14;
+          const lfoG = this.ctx.createGain(); lfoG.gain.value = 0.5;
+          lfo.connect(lfoG); lfoG.connect(chop.gain);
+          chop.gain.value = 0.5;
+          src.connect(bp); bp.connect(chop); chop.connect(g);
+          lfo.start(when); lfo.stop(when + e.dur + 0.05);
+          node = src;
+          break;
+        }
+        src.connect(bp); bp.connect(g);
+        node = src;
+        break;
       }
-      node = o;
+      case 'riser': {
+        // FM-ish riser: sawtooth sweeping up an octave over the event.
+        const o = this.ctx.createOscillator();
+        o.type = 'sawtooth';
+        o.frequency.setValueAtTime(freq, when);
+        o.frequency.exponentialRampToValueAtTime(freq * 2, when + e.dur);
+        wireFilter('lowpass', e.filterFreq ?? 4000);
+        o.connect(tail);
+        node = o;
+        break;
+      }
+      default: {
+        // tone | pad | bass | pluck | ping
+        const o = this.ctx.createOscillator();
+        if (e.kind === 'bass') o.type = 'sine';
+        else if (e.kind === 'pad') o.type = 'triangle';
+        else if (e.kind === 'pluck') o.type = 'triangle';
+        else if (e.kind === 'ping') o.type = 'sine';
+        else o.type = 'square';
+        o.frequency.value = freq;
+        if (e.kind === 'ping') {
+          // Glassy ping: a detuned shimmer partial riding the fundamental.
+          const o2 = this.ctx.createOscillator();
+          o2.type = 'sine';
+          o2.frequency.value = freq * 2.76;
+          const g2 = this.ctx.createGain();
+          g2.gain.value = 0.25;
+          o2.connect(g2); g2.connect(g);
+          o2.start(when); o2.stop(when + e.dur + 0.05);
+        }
+        const lp = e.filterFreq ?? (e.kind === 'pad' ? 1200 : e.kind === 'pluck' ? 3200 : 0);
+        if (lp > 0) wireFilter('lowpass', lp);
+        o.connect(tail);
+        node = o;
+        break;
+      }
     }
+    // Note: reverbSend is accepted by validateScore but not wired here —
+    // ScorePlayer is the portable demo renderer; zone reverb lives in the
+    // spatial graph (spatial.ts), which owns convolvers.
     if (e.pan !== undefined && Math.abs(e.pan) > 0.01 && 'createStereoPanner' in this.ctx) {
       const p = this.ctx.createStereoPanner();
       p.pan.value = e.pan;
-      g.connect(p); p.connect(this.dest);
+      tail.connect(p); p.connect(this.dest);
     } else {
-      g.connect(this.dest);
+      tail.connect(this.dest);
     }
     node.start(when);
     node.stop(when + e.dur + 0.05);

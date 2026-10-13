@@ -2,6 +2,7 @@
 export type {
   ZoneDescriptor, PortalDescriptor, Bounds3,
   ZoneWindParams, ZoneTerrainParams, ZoneSkyParams, ZoneBiomeParams,
+  ZoneAudioParams,
   FieldDomain, FieldParams,
   WindParams, SceneParams, GenesisParams, BiomeParams,
   TempoParams, LightParams, PresenceParams,

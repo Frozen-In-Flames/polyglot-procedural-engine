@@ -129,6 +129,40 @@ export interface AudioCaps {
   note(e: NoteEvent): void;
   /** Schedule many at once. */
   notes(es: NoteEvent[]): void;
+  /** Positional one-shot SFX. Schema-validated and range-clamped by the
+   *  host — scripts request, the host places and plays (V8 §5.2). */
+  sfx(spec: SfxSpec): void;
+  /** One-way adaptive state push. Merged into the conductor state by the
+   *  host, range-clamped. Scripts never read the mix back (V8 §5.2). */
+  mood(partial: MoodPartial): void;
+}
+
+/** One-shot SFX kinds a script may request (V8 §5.2). */
+export type SfxKind = 'pluck' | 'ping' | 'riser' | 'gust';
+
+/**
+ * Positional one-shot SFX request. Crosses the script boundary as plain
+ * JSON; the host validates (schema-checked, range-clamped), places, and
+ * plays. A hostile script can be annoying; it cannot break the mix —
+ * gains clamp, the voice budget holds, the master limiter stands.
+ */
+export interface SfxSpec {
+  kind: SfxKind;
+  pos: [number, number, number];
+  gain: number; // 0..1
+  seed?: number;
+  freq?: number; // Hz, > 0
+}
+
+/**
+ * One-way adaptive state push: a partial conductor state vector (V8 §4.1).
+ * The host merges it into its state; every field is range-clamped.
+ */
+export interface MoodPartial {
+  energy?: number;     // 0..1
+  tension?: number;    // 0..1
+  brightness?: number; // 0..1
+  tempo?: number;      // 0.5..2 multiplier on the base bpm
 }
 
 /**

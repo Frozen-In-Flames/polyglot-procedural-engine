@@ -79,6 +79,30 @@ export interface ZoneDescriptor {
   biome: ZoneBiomeParams;
   wind: ZoneWindParams;
   portals: PortalDescriptor[];
+  /**
+   * Optional validated audio block (V8 §5.3). Absent = today's behavior.
+   * Note: this carries a REVERB seed, not a wind seed — the wind-seed ban
+   * above is untouched; reverb seeds generate impulse responses, they do
+   * not steer the shared wind field.
+   */
+  audio?: ZoneAudioParams;
+}
+
+/**
+ * Zone audio parameters (V8 §5.3): a reverb seed plus the zone's generated
+ * reverb tail and its named ambient granular bed (wind/water/breath).
+ */
+export interface ZoneAudioParams {
+  /** Reverb seed: the zone's impulse response is generated from this. */
+  reverbSeed: number;
+  /** Exponential IR decay rate per second (> 0). */
+  decay: number;
+  /** Progressive IR lowpass damping 0..1. */
+  damping: number;
+  /** Reverb wet mix 0..1. */
+  wet: number;
+  /** Named seeded granular bed the zone owns (optional). */
+  ambientLayer?: 'wind' | 'water' | 'breath';
 }
 
 // ---------------------------------------------------------------------------
@@ -301,5 +325,30 @@ export function parseZoneDescriptor(json: unknown): ZoneDescriptor {
     placement: { offset: placement.offset },
     bounds: { min: bounds.min, max: bounds.max },
     terrain, sky, biome, wind, portals,
+    ...(d.audio === undefined ? {} : { audio: parseZoneAudio(d.audio, id) }),
   };
+}
+
+const AMBIENT_LAYERS = ['wind', 'water', 'breath'] as const;
+
+/** Parse and validate the optional zone audio block (V8 §5.3). */
+function parseZoneAudio(json: unknown, zoneId: string): ZoneAudioParams {
+  if (typeof json !== 'object' || json === null) {
+    throw new Error(`world: zone '${zoneId}' audio must be an object`);
+  }
+  const a = json as Record<string, unknown>;
+  const out: ZoneAudioParams = {
+    reverbSeed: num(a.reverbSeed, 'audio.reverbSeed') >>> 0,
+    decay: positive(num(a.decay, 'audio.decay'), 'audio.decay'),
+    damping: range(num(a.damping, 'audio.damping'), 0, 1, 'audio.damping'),
+    wet: range(num(a.wet, 'audio.wet'), 0, 1, 'audio.wet'),
+  };
+  if (a.ambientLayer !== undefined) {
+    if (typeof a.ambientLayer !== 'string' ||
+        !(AMBIENT_LAYERS as readonly string[]).includes(a.ambientLayer)) {
+      throw new Error(`world: zone '${zoneId}' audio.ambientLayer must be wind|water|breath`);
+    }
+    out.ambientLayer = a.ambientLayer as ZoneAudioParams['ambientLayer'];
+  }
+  return out;
 }

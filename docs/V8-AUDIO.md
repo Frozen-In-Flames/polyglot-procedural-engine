@@ -1,8 +1,8 @@
 # V8 Design: The Engine Gets Ears (Procedural Audio)
 
-**Status:** design only, not built. Mapped overnight Oct 13, 2026 per Aries's
-direction ("map it in more depth overnight, then build it during day").
-Build is a separate, explicitly-ordered step.
+**Status:** built and shipped in v0.8.0 (2026-10-13). Mapped overnight
+Oct 13, 2026 per Aries's direction ("map it in more depth overnight, then
+build it during day").
 
 ## The thesis
 
@@ -321,7 +321,9 @@ breathes instead of switching.
 ### 4.3 First Light: attunement heard as resonance (the key beat)
 
 First Light's hidden attunement score (0–100, six thresholds at
-15/30/45/60/75/90, gate opens only at level 6) becomes the conductor's
+12/28/44/60/74/88 — the game's ATTUNE_LEVELS in games/first-light/shared.ts,
+which the conductor mirrors so the heard levels stay in sync with the
+level-ups; gate opens only at level 6) becomes the conductor's
 deepest input. The design law is *felt before understood*: the game
 never names attunement, shows no numbers — and V8 extends that law to
 the ears. As the player learns to move *with* the wind, the world

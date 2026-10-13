@@ -24,7 +24,26 @@ export { Renderer } from './render/renderer.js';
 export { WebXRProvider } from './xr/webxr.js';
 export { InlineProvider } from './xr/inline.js';
 export { SpatialAudio, BuiltinPadDriver } from './audio/spatial.js';
-export type { MusicDriver } from './audio/spatial.js';
+export type { MusicDriver, VoiceSpec, ReverbZoneSpec, CameraPose, RaycastFn, OneShotSpec, EmitterVoiceKind } from './audio/spatial.js';
 export { ScorePlayer, validateScore } from './audio/driver.js';
 export type { AudioEvent, ScoreDoc, ScoreKind } from './audio/driver.js';
+export { MixGraph } from './audio/graph.js';
+export type { BusName } from './audio/graph.js';
+export { DspBridge, DSP_EXPORTS } from './audio/dsp.js';
+export type { DspWasmModule, DspExportName } from './audio/dsp.js';
+export {
+  Conductor, ATTUNE_THRESHOLDS, attunementLevel, attunementLevelAt,
+  layerGains, motionDensity, resonanceActive, resonanceActiveAt,
+  justLattice, smoothstep, NEUTRAL_STATE, LAYER_NAMES,
+} from './audio/score.js';
+export type { ConductorState, ConductorOpts, LayerName } from './audio/score.js';
+export { AudioEngine } from './audio/engine.js';
+export type { AudioEngineOpts } from './audio/engine.js';
+export { parseAudioBundle, loadAudioBundle, bundleIR, bundleTexture } from './audio/foundry.js';
+export type { AudioBundle, FoundryIRParams, FoundryTextureParams } from './audio/foundry.js';
+export {
+  renderSfx, renderVoiceBuffer, renderIR, pluckKS, modalBank, riserFM, gustNoise,
+  makeXorShift32,
+} from './audio/synth.js';
+export type { SfxVoiceKind, SfxRenderOpts } from './audio/synth.js';
 export * from './script/index.js';

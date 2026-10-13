@@ -119,6 +119,8 @@ export const gateScript: ScriptDef = {
     if (level >= 6 && !opened) {
       caps.world.setState('gate:opened', 1);
       // The gate answers: a ring of light, a chord, and the way through.
+      // Root frequency of the chord: 174.6 Hz — see GATE_ROOT_FREQ in
+      // shared.ts; the V8 conductor resolves its resonance lattice on it.
       caps.world.spawn('gate-ring', {
         position: [GATE_POS[0], gateY, GATE_POS[2]],
         tag: 'gate', body: RING_BODY,

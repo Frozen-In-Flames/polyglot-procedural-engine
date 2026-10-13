@@ -3,6 +3,95 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [0.8.0] — V8 (2026-10-13)
+
+The engine gets ears — zero audio files. V7 let the user own what they made;
+V8 lets them hear it. A full procedural audio engine with zero asset
+dependence: every oscillator, grain, and reverb tail is math evaluated at
+runtime, seeded and deterministic, like every pixel already was.
+
+### Per-language contributions
+
+- **TypeScript** (`src/audio/`): the mix graph (`graph.ts` — master, music,
+  SFX, and voice buses; bus gains are the conductor's faders), the extended
+  spatial graph (`spatial.ts` — entity-bound emitters, reverb zones,
+  occlusion), the conductor (`score.ts` — game-state vector to per-language
+  layer gains as pure, unit-testable functions), the WASM DSP bridge
+  (`dsp.ts`), the TypeScript sample-rendering mirror of the C++ core
+  (`synth.ts`), and the offline foundry bundle loader (`foundry.ts`). Web
+  Audio is a browser platform API, not a dependency.
+- **C++ → WASM** (`native/gen/dsp/`): the DSP core — polyBLEP oscillator
+  bank, FM operator stacks, granular engine (grains over synthesized
+  sources, never loaded samples), Karplus-Strong plucks, modal resonator
+  bells, filter suite, and generated impulse responses. Pure functions of
+  (seed, params), double-precision phase, EMSCRIPTEN_KEEPALIVE exports,
+  same toolchain as the noise core.
+- **Python** (`python/xrgen/`): composition keeps its role — it composes,
+  never renders. `AdaptiveComposer` (seed plus state vector to score doc),
+  the `score.py` arrangement library (progression families, voice-leading,
+  density curves; TypeScript mirrors the determinism-critical subset), and
+  the offline `audio_foundry.py` (IR design, spectrum analysis, long-texture
+  baking into JSON parameter bundles).
+- **C#**: the arp + hats layer gains density control — hats thin out at low
+  energy, the arp climbs octaves with brightness.
+- **Swift**: the sparkle pings gain the orbit — pan paths widen with
+  attunement, so the listener hears the space open up.
+- **Kotlin**: the sub pulse stays the anchor — one clean voice on the low
+  end, its drop deepening as tension rises.
+
+### The conductor (`src/audio/score.ts`, `src/audio/graph.ts`)
+
+The engine no longer loops a track; it performs one. A game-state vector
+(energy, tension, attunement, brightness, tempo) drives per-language layers
+with per-bar crossfades. Layers enter and leave whole — nothing hard-cuts;
+the music breathes. Scripts push state one-way through the caps
+(`caps.audio.mood(partial)`); the host validates, owns every node, and
+plays.
+
+### First Light: the resonance moment
+
+The hidden attunement score — six thresholds, one per engine language —
+becomes the conductor's deepest input, and it is heard, never shown. Level
+by level the world answers: the sub pulse enters (the world gains a
+heartbeat); the pad filter opens with brightness (the air clears); the arp
+fades in tempo-locked to the wind's rhythm regions; the sparkle orbit
+widens (the space itself feels larger); a sparse pentatonic melody enters,
+calling toward the gate; and at resonance every layer retunes to a
+just-intonation lattice on the gate's root (174.6 Hz). The beating between
+detuned voices — present all game as texture — resolves into consonance.
+The world tunes itself when the player does, and the opening is heard
+before it is seen. Fight the wind and the path runs in reverse: the layers
+thin out, the tuning loosens. The ear learns the mechanic the eyes never
+explain. No UI, no numbers — a scripted playthrough reaching resonance is
+the acceptance test you can hear with your eyes closed. The attunement
+script pushes `{attunement, energy, tension, brightness}` every frame and
+publishes the gate's root frequency through world state (`gate:rootFreq`).
+
+### Score schema v1.1 (backward compatible)
+
+`ScoreKind` grows additively (`pluck | ping | riser | gust | granular`);
+old documents validate unchanged. New optional event fields, all
+range-clamped: `attack`, `decay`, `filterFreq`, `reverbSend`.
+
+### Spatial audio (`src/audio/spatial.ts` extended)
+
+Entity-bound emitters on the scene graph, reverb zones with generated IRs
+(seeded, cached per zone), occlusion from the existing colliders. 32-voice
+budget with (loudness × proximity) priority stealing, documented.
+
+### Verification
+
+Verification: TS suite — 200 tests green (24 new audio-v8 tests); Python
+suite — 87 tests green (32 new audio-v8 tests); C++ DSP renders — native
+determinism suite all-pass plus WASM smoke test of all 8 xr_dsp_* exports;
+`tsc` clean; zero new runtime dependencies.
+Honestly remaining: real-headset audio, on-device provider wiring
+(AVAudioEnvironmentNode, Oboe), long-session drift.
+
+### The arc
+
+See it (V1), play it (V4), build it (V5), own it (V6/V7), hear it (V8).
+
 ## [0.7.0] — V7 (2026-10-12)
 
 Bring your own chain. V6 built the complete ownership system off-chain;
