@@ -4,6 +4,11 @@
 and sound is generated in code at runtime. The point of v1 is the **proof** — all
 languages working together to replace assets entirely.
 
+> **Why the name:** this project was formerly called "XR Engine." It was renamed
+> to Polyglot Procedural Engine to match its unique value proposition: a
+> polyglot core (TypeScript, C++, Python, C#, Swift, Kotlin) where every visual
+> and sound is procedural, with zero asset files.
+
 ## The polyglot pipeline (v1)
 
 | Language | Role in v1 | Status |
