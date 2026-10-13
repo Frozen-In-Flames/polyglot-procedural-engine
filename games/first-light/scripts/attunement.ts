@@ -167,10 +167,8 @@ export const attunementScript: ScriptDef = {
     const tension = Math.min(1, 0.65 * fight + 0.35 * unresolved);
     const lightVal = (caps.world.state('foundry:val:4') as number | undefined) ?? 0.5;
     const brightness = Math.max(0, Math.min(1, lightVal));
-    // Guarded: the engine worker's runtime mood() has not landed yet, and
-    // the runtime builds the audio caps from note/notes only. The guard
-    // drops away once it does; until then the conductor simply keeps its
-    // defaults and nothing here changes game behavior.
+    // Guarded: if the host runtime predates V8's mood(), this is a no-op and
+    // the conductor keeps its defaults — zero behavior change.
     const moodAudio = caps.audio as unknown as MoodAudio;
     if (typeof moodAudio.mood === 'function') {
       moodAudio.mood.call(caps.audio, { attunement: score, energy, tension, brightness });
