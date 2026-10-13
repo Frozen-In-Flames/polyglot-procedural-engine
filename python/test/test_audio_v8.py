@@ -270,8 +270,12 @@ class TestAudioComposerRegression(unittest.TestCase):
             rng_src = f.read()
         with open(os.path.join(pkg, "rng.py"), "w") as f:
             f.write(rng_src)
-        with open(os.path.join(pkg, "audio.py"), "w") as f:
-            f.write(head_src)
+        for mod in ("audio.py", "score.py"):
+            mod_src = subprocess.run(
+                ["git", "-C", repo, "show", "HEAD:python/xrgen/" + mod],
+                capture_output=True, text=True, check=True).stdout
+            with open(os.path.join(pkg, mod), "w") as f:
+                f.write(mod_src)
         sys.path.insert(0, tmp)
         cls.head_audio = importlib.import_module("xrgen_head.audio")
 
