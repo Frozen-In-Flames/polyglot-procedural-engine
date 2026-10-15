@@ -61,5 +61,23 @@ export interface XRSessionHandle {
   /** AR hit test against real-world surfaces using the latest frame.
    *  Returns null when unsupported or no hit. */
   hitTest?(origin: Vec3, dir: Vec3): Vec3 | null;
+  /** Controller snapshots for the V9 unified input system. Empty for
+   *  inline sessions. */
+  getInputSources?(): XRControllerState[];
+  /** Locomotion provider for the V9 unified input system: the session
+   *  applies the returned planar offset (x, z, yaw) to its reference
+   *  space each frame. Null disables. Only meaningful for XR sessions. */
+  setLocomotion?(get: (() => { x: number; z: number; yaw: number } | null)): void;
+  /** Fired when the platform XR session ends (system UI exit). */
+  onEnd?(cb: () => void): void;
   end(): Promise<void>;
+}
+
+/** Minimal controller snapshot shared by the V9 input schemes. Mirrors
+ *  input/XRInputScheme's XRControllerState without importing it (the
+ *  bridge stays dependency-light). */
+export interface XRControllerState {
+  handedness: 'left' | 'right' | 'none';
+  axes: number[];
+  buttons: boolean[];
 }

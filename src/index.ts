@@ -47,3 +47,4 @@ export {
 } from './audio/synth.js';
 export type { SfxVoiceKind, SfxRenderOpts } from './audio/synth.js';
 export * from './script/index.js';
+export * from './input/index.js';

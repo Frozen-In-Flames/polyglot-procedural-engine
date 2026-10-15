@@ -3,6 +3,36 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [0.9.0] — V9 (2026-10-15)
+
+Controls work on all device types. V9 adds a unified input system: one camera
+rig that every input scheme drives, with no per-device camera hacks.
+
+- **CameraRig** (`src/input/rig.ts`): owns position plus yaw/pitch and writes
+  the scene camera node each frame. Two modes: free-fly (default) and orbit
+  (the classic drag-to-orbit view, kept as an alternative; WASD pans the
+  orbit target).
+- **Desktop scheme**: WASD plus arrow-key fallback to move, mouse look via
+  pointer lock (click the scene), drag deltas as fallback, Q/E and Space for
+  down/up, scroll to zoom in orbit mode.
+- **Touch scheme**: left-half virtual joystick to move with an on-screen
+  joystick overlay, right-half drag to look. Auto-shown on touch devices.
+- **XR scheme**: WebXR session support with controller input. Left
+  thumbstick moves, right thumbstick turns and rises/sinks, trigger rises.
+  Look comes from the headset in immersive mode. Locomotion reaches the
+  renderer through a reference-space offset, and the demo auto-switches to
+  the XR scheme on session start and back on session end.
+- **Auto-detection** with manual override: the demo picks desktop, touch, or
+  XR from device capabilities and offers a visible Controls selector plus
+  on-screen help listing the active scheme's controls.
+- Zero new runtime dependencies. Full suite green: 226/226 (200 existing
+  plus 26 new input tests, no network in tests).
+
+Honest limits: WebXR locomotion and controller input are implemented against
+the WebXR spec and unit-tested with injected controller snapshots, but have
+not been verified on a real headset yet. Pointer lock requires a user click
+and is unavailable in some embedded browsers, where drag look remains.
+
 ## [0.8.0] — V8 (2026-10-13)
 
 The engine gets ears — zero audio files. V7 let the user own what they made;

@@ -11,6 +11,9 @@ import {
   fromAxisAngle, quatMultiply,
   ScriptRuntime, SceneEntityBackend, floatScript,
   type GenCore, type XRSessionHandle, type XRMode, type FrameCallback, type RenderView,
+  CameraRig, DesktopScheme, TouchScheme, XRInputScheme,
+  collectCaps, pickScheme,
+  type InputScheme, type SchemeId, type SchemeOverride, type CapEnv,
 } from '../src/index.js';
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
@@ -19,6 +22,12 @@ const statusEl = document.getElementById('status') as HTMLDivElement;
 const btnVR = document.getElementById('btn-vr') as HTMLButtonElement;
 const btnAR = document.getElementById('btn-ar') as HTMLButtonElement;
 const btnAudio = document.getElementById('btn-audio') as HTMLButtonElement;
+const btnOrbit = document.getElementById('btn-orbit') as HTMLButtonElement;
+const schemeSel = document.getElementById('input-scheme') as HTMLSelectElement;
+const helpEl = document.getElementById('input-help') as HTMLDivElement;
+const hintEl = document.getElementById('hint') as HTMLDivElement;
+const joystickEl = document.getElementById('joystick') as HTMLDivElement;
+const stickEl = document.getElementById('stick') as HTMLDivElement;
 
 function pipelineRow(system: string, lang: string): void {
   const li = document.createElement('li');
@@ -239,6 +248,7 @@ async function main(): Promise<void> {
   pipelineRow('physics: particles', 'TypeScript');
   pipelineRow('sky dome', 'TypeScript');
   pipelineRow('rocks', 'TypeScript');
+  pipelineRow('input: unified schemes', 'TypeScript');
 
   // ---- Renderer / polyglot audio ----
   // Every language gets a voice in the mix: TS pad, C++ DSP bass, Python
@@ -309,12 +319,80 @@ async function main(): Promise<void> {
     scripts.emit('input:pointer', { x: e.clientX, y: e.clientY });
   });
 
+  // ---- V9 unified input: one camera rig, every device ----
+  // The rig owns position + yaw/pitch. Desktop, touch, and XR schemes all
+  // feed it; it writes the scene camera node each frame.
+  const rig = new CameraRig();
+  const desktopScheme = new DesktopScheme();
+  const touchScheme = new TouchScheme();
+  const xrScheme = new XRInputScheme();
+  const schemes: Record<SchemeId, InputScheme> = {
+    desktop: desktopScheme,
+    touch: touchScheme,
+    xr: xrScheme,
+  };
+  let schemeOverride: SchemeOverride = 'auto';
+  let caps = { touchPoints: 0, coarsePointer: false, xrImmersiveVr: false };
+  let activeScheme: InputScheme = desktopScheme;
+
+  const HINTS: Record<SchemeId, string> = {
+    desktop: 'WASD move · mouse look (click scene to lock) · drag also looks',
+    touch: 'left thumb: joystick to move · right thumb: drag to look',
+    xr: 'thumbsticks to move and turn · headset to look',
+  };
+
+  function refreshSchemeUI(): void {
+    const id = pickScheme(caps, schemeOverride);
+    activeScheme = schemes[id];
+    helpEl.innerHTML = '';
+    for (const line of activeScheme.helpLines) {
+      const div = document.createElement('div');
+      div.textContent = line;
+      helpEl.appendChild(div);
+    }
+    hintEl.textContent = HINTS[id] + (rig.mode === 'orbit' ? ' · orbit view' : '');
+    if (id !== 'touch') joystickEl.style.display = 'none';
+  }
+
+  function setSchemeOverride(o: SchemeOverride): void {
+    schemeOverride = o;
+    schemeSel.value = o;
+    refreshSchemeUI();
+  }
+
+  schemeSel.onchange = () => setSchemeOverride(schemeSel.value as SchemeOverride);
+
+  btnOrbit.onclick = () => {
+    rig.mode = rig.mode === 'fly' ? 'orbit' : 'fly';
+    btnOrbit.classList.toggle('active', rig.mode === 'orbit');
+    btnOrbit.textContent = rig.mode === 'orbit' ? 'Fly view' : 'Orbit view';
+    refreshSchemeUI();
+  };
+
   // ---- Frame loop (shared by inline + XR sessions) ----
   let last = performance.now();
   const frame: FrameCallback = (views: RenderView[], t: number) => {
     const now = performance.now();
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
+    // V9: the active scheme drives the rig, the rig writes the camera.
+    if (activeScheme === xrScheme && current?.getInputSources) {
+      xrScheme.setControllers(current.getInputSources());
+    }
+    activeScheme.poll(rig, dt);
+    rig.applyTo(camNode);
+    // Touch joystick overlay follows the joystick state.
+    if (activeScheme === touchScheme) {
+      const j = touchScheme.joystick();
+      if (j) {
+        joystickEl.style.display = 'block';
+        joystickEl.style.left = j.ox + 'px';
+        joystickEl.style.top = j.oy + 'px';
+        stickEl.style.transform = `translate(calc(-50% + ${j.dx}px), calc(-50% + ${j.dy}px))`;
+      } else {
+        joystickEl.style.display = 'none';
+      }
+    }
     scripts.update(dt, t);
     root.updateWorldMatrix(null);
     root.update(dt, t);
@@ -335,56 +413,110 @@ async function main(): Promise<void> {
 
   const webxr = new WebXRProvider();
   await webxr.init();
+  // V9: device capabilities for input auto-detection. The XR probe reuses
+  // the session provider's own check so we never probe twice.
+  caps = await collectCaps({
+    navigator: navigator as unknown as CapEnv['navigator'],
+    matchMedia: window.matchMedia.bind(window),
+    ontouchstart: 'ontouchstart' in window ? true : undefined,
+  });
+  caps.xrImmersiveVr = webxr.supportedModes.includes('immersive-vr' as XRMode);
+  refreshSchemeUI();
+
+  /** Switch to the XR scheme with rig locomotion; restore on session end. */
+  const enterXR = async (mode: 'immersive-vr' | 'immersive-ar', label: string) => {
+    try {
+      setStatus('entering ' + label + '...');
+      await current?.end();
+      const session = await webxr.requestSession(mode as XRMode, canvas);
+      current = session;
+      const prevOverride = schemeOverride;
+      setSchemeOverride('xr');
+      session.setLocomotion?.(() => ({
+        x: rig.position[0],
+        z: rig.position[2],
+        yaw: rig.yaw,
+      }));
+      session.onEnd?.(() => {
+        session.setLocomotion?.(() => null);
+        void startInline();
+        setSchemeOverride(prevOverride);
+        setStatus('');
+      });
+      session.onFrame(frame);
+      setStatus('');
+    } catch (e) { setStatus(label + ' failed: ' + (e as Error).message); }
+  };
   if (webxr.supportedModes.includes('immersive-vr' as XRMode)) {
     btnVR.disabled = false;
-    btnVR.onclick = async () => {
-      try {
-        setStatus('entering VR...');
-        await current?.end();
-        current = await webxr.requestSession('immersive-vr', canvas);
-        current.onFrame(frame);
-        setStatus('');
-      } catch (e) { setStatus('VR failed: ' + (e as Error).message); }
-    };
+    btnVR.onclick = () => void enterXR('immersive-vr', 'VR');
   }
   if (webxr.supportedModes.includes('immersive-ar' as XRMode)) {
     btnAR.disabled = false;
-    btnAR.onclick = async () => {
-      try {
-        setStatus('entering AR...');
-        await current?.end();
-        current = await webxr.requestSession('immersive-ar', canvas);
-        current.onFrame(frame);
-        setStatus('');
-      } catch (e) { setStatus('AR failed: ' + (e as Error).message); }
-    };
+    btnAR.onclick = () => void enterXR('immersive-ar', 'AR');
   }
 
-  // Inline orbit controls (drag to look, wheel to zoom).
-  let yaw = 0, pitch = -0.18, dist = 24;
-  const target: [number, number, number] = [0, 4, -4];
-  const applyOrbit = () => {
-    camNode.setPosition(
-      target[0] + dist * Math.sin(yaw) * Math.cos(pitch),
-      target[1] + dist * Math.sin(-pitch),
-      target[2] + dist * Math.cos(yaw) * Math.cos(pitch),
-    );
-  };
+  // ---- V9 input event wiring (DOM adapters; the schemes stay DOM-free) ----
+  window.addEventListener('keydown', (e) => {
+    if (activeScheme !== desktopScheme) return;
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+      e.preventDefault();
+    }
+    desktopScheme.onKeyDown(e.code);
+  });
+  window.addEventListener('keyup', (e) => {
+    desktopScheme.onKeyUp(e.code);
+  });
+  window.addEventListener('blur', () => desktopScheme.clearKeys());
+
+  // Click the scene to lock the pointer for mouse look (desktop scheme).
+  canvas.addEventListener('click', () => {
+    if (activeScheme === desktopScheme && !desktopScheme.pointerLocked) {
+      canvas.requestPointerLock?.();
+    }
+  });
+  document.addEventListener('pointerlockchange', () => {
+    desktopScheme.setPointerLocked(document.pointerLockElement === canvas);
+  });
   let dragging = false, lx = 0, ly = 0;
-  canvas.addEventListener('pointerdown', (e) => { dragging = true; lx = e.clientX; ly = e.clientY; });
+  canvas.addEventListener('pointerdown', (e) => {
+    dragging = true; lx = e.clientX; ly = e.clientY;
+  });
   window.addEventListener('pointerup', () => { dragging = false; });
   window.addEventListener('pointermove', (e) => {
-    if (!dragging) return;
-    yaw -= (e.clientX - lx) * 0.005;
-    pitch = Math.max(-1.2, Math.min(0.6, pitch - (e.clientY - ly) * 0.005));
-    lx = e.clientX; ly = e.clientY;
-    applyOrbit();
+    if (activeScheme !== desktopScheme) return;
+    if (desktopScheme.pointerLocked) {
+      desktopScheme.onMouseDelta(e.movementX, e.movementY);
+    } else if (dragging) {
+      // Drag fallback when the pointer is not locked.
+      desktopScheme.onMouseDelta(e.clientX - lx, e.clientY - ly);
+      lx = e.clientX; ly = e.clientY;
+    }
   });
   canvas.addEventListener('wheel', (e) => {
-    dist = Math.max(6, Math.min(60, dist + e.deltaY * 0.02));
-    applyOrbit();
+    rig.addZoom(e.deltaY * 0.02);
   }, { passive: true });
-  applyOrbit();
+
+  // Touch: left half joystick, right half look (touch scheme only).
+  canvas.addEventListener('touchstart', (e) => {
+    if (activeScheme !== touchScheme) return;
+    e.preventDefault();
+    for (const t of Array.from(e.changedTouches)) {
+      touchScheme.onTouchStart(t.identifier, t.clientX, t.clientY, window.innerWidth);
+    }
+  }, { passive: false });
+  canvas.addEventListener('touchmove', (e) => {
+    if (activeScheme !== touchScheme) return;
+    e.preventDefault();
+    for (const t of Array.from(e.changedTouches)) {
+      touchScheme.onTouchMove(t.identifier, t.clientX, t.clientY);
+    }
+  }, { passive: false });
+  const endTouch = (e: TouchEvent) => {
+    for (const t of Array.from(e.changedTouches)) touchScheme.onTouchEnd(t.identifier);
+  };
+  canvas.addEventListener('touchend', endTouch);
+  canvas.addEventListener('touchcancel', endTouch);
 
   btnAudio.onclick = () => {
     const on = btnAudio.textContent === 'Sound on';

@@ -3,6 +3,7 @@
 // and reports what the device actually supports.
 import type {
   SessionProvider, XRSessionHandle, XRMode, FrameCallback, RenderView,
+  XRControllerState,
 } from '../bridge/providers.js';
 import type { Vec3 } from '../math/vec.js';
 
@@ -11,8 +12,15 @@ interface XRSystem {
   isSessionSupported(mode: string): Promise<boolean>;
   requestSession(mode: string, opts?: Record<string, unknown>): Promise<XRSession>;
 }
+interface XRGamepadButton { pressed: boolean }
+interface XRGamepad { axes: number[]; buttons: XRGamepadButton[] }
+interface XRInputSource {
+  handedness: 'left' | 'right' | 'none';
+  gamepad?: XRGamepad | null;
+}
 interface XRSession {
   renderState: XRRenderState;
+  inputSources: XRInputSource[];
   updateRenderState(state: Record<string, unknown>): Promise<void> | void;
   requestReferenceSpace(type: string): Promise<XRReferenceSpace>;
   requestAnimationFrame(cb: (t: number, frame: XRFrame) => void): number;
@@ -25,7 +33,14 @@ interface XRWebGLLayer {
   framebufferWidth: number;
   framebufferHeight: number;
 }
-interface XRReferenceSpace extends EventTarget {}
+interface XRReferenceSpace extends EventTarget {
+  getOffsetReferenceSpace?(origin: XRRigidTransformInit): XRReferenceSpace;
+}
+/** Init dict for the platform XRRigidTransform constructor (read off window). */
+interface XRRigidTransformInit {
+  position?: { x?: number; y?: number; z?: number };
+  orientation?: { x?: number; y?: number; z?: number; w?: number };
+}
 interface XRFrame {
   session: XRSession;
   getViewerPose(ref: XRReferenceSpace): XRViewerPose | null;
@@ -54,12 +69,58 @@ class WebXRSession implements XRSessionHandle {
   private hitSource: XRHitTestSource | null = null;
   private lastFrame: XRFrame | null = null;
   private viewerSpace: XRReferenceSpace | null = null;
+  private locomotion: (() => { x: number; z: number; yaw: number } | null) | null = null;
+  private locoCache: { x: number; z: number; yaw: number; space: XRReferenceSpace } | null = null;
 
   constructor(mode: XRMode, session: XRSession, refSpace: XRReferenceSpace, layer: XRWebGLLayer) {
     this.mode = mode;
     this.session = session;
     this.refSpace = refSpace;
     this.layer = layer;
+  }
+
+  /** V9: planar locomotion from the unified input rig. The offset is
+   *  applied to the reference space each frame (cached while unchanged). */
+  setLocomotion(get: (() => { x: number; z: number; yaw: number } | null)): void {
+    this.locomotion = get;
+    this.locoCache = null;
+  }
+
+  /** V9: callback fired when the platform session ends (system UI exit). */
+  onEnd(cb: () => void): void {
+    this.session.addEventListener('end', cb);
+  }
+
+  /** V9: controller snapshots for the unified XR input scheme. */
+  getInputSources(): XRControllerState[] {
+    const out: XRControllerState[] = [];
+    for (const s of this.session.inputSources ?? []) {
+      out.push({
+        handedness: s.handedness,
+        axes: s.gamepad ? [...s.gamepad.axes] : [],
+        buttons: s.gamepad ? s.gamepad.buttons.map((b) => b.pressed) : [],
+      });
+    }
+    return out;
+  }
+
+  /** Reference space with the current locomotion offset applied. */
+  private activeSpace(): XRReferenceSpace {
+    const loco = this.locomotion?.() ?? null;
+    if (!loco) return this.refSpace;
+    const c = this.locoCache;
+    if (c && c.x === loco.x && c.z === loco.z && c.yaw === loco.yaw) return c.space;
+    const half = loco.yaw / 2;
+    const Rigid = (window as unknown as {
+      XRRigidTransform: new (p: XRRigidTransformInit['position'], o: XRRigidTransformInit['orientation']) => XRRigidTransformInit;
+    }).XRRigidTransform;
+    const space = this.refSpace.getOffsetReferenceSpace
+      ? this.refSpace.getOffsetReferenceSpace(
+          new Rigid({ x: loco.x, y: 0, z: loco.z }, { x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) }),
+        )
+      : this.refSpace;
+    this.locoCache = { x: loco.x, z: loco.z, yaw: loco.yaw, space };
+    return space;
   }
 
   async initAR(): Promise<void> {
@@ -77,7 +138,7 @@ class WebXRSession implements XRSessionHandle {
     const loop = (_t: number, frame: XRFrame) => {
       this.session.requestAnimationFrame(loop);
       this.lastFrame = frame;
-      const pose = frame.getViewerPose(this.refSpace);
+      const pose = frame.getViewerPose(this.activeSpace());
       if (!pose) return;
       const views: RenderView[] = [];
       const w = this.layer.framebufferWidth, h = this.layer.framebufferHeight;

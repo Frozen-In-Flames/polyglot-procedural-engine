@@ -26,28 +26,60 @@
       }
       #btns button:disabled { background: #334155; cursor: default; opacity: 0.6; }
       #btns button.secondary { background: #1e293b; }
+      #btns button.active { background: #7c3aed; }
+      #ver { font-size: 10px; color: #67e8f9; font-weight: 700; margin-left: 6px; }
+      #controls-row { display: flex; gap: 8px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
+      #controls-row label { font-size: 11px; color: #94a3b8; }
+      #input-scheme {
+        background: #1e293b; color: #e2e8f0; border: 1px solid #334155;
+        border-radius: 8px; padding: 6px 8px; font-size: 12px;
+      }
+      #input-help { margin-top: 8px; font-size: 11px; color: #94a3b8; line-height: 1.5; }
+      #input-help div::before { content: "▸ "; color: #67e8f9; }
       #status { margin-top: 8px; font-size: 11px; color: #fbbf24; min-height: 14px; }
       #hint {
         position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 10;
         color: #64748b; font-size: 11px; background: rgba(10,14,24,0.7);
         padding: 6px 12px; border-radius: 999px; border: 1px solid #1e293b;
+        white-space: nowrap; max-width: 94vw; overflow: hidden; text-overflow: ellipsis;
+      }
+      #joystick {
+        position: fixed; z-index: 10; width: 120px; height: 120px; border-radius: 50%;
+        border: 2px solid rgba(103, 232, 249, 0.35); background: rgba(10, 14, 24, 0.35);
+        display: none; pointer-events: none; transform: translate(-50%, -50%);
+      }
+      #stick {
+        position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; border-radius: 50%;
+        background: rgba(103, 232, 249, 0.55); transform: translate(-50%, -50%);
       }
     </style>
   </head>
   <body>
     <div id="app"><canvas id="scene"></canvas></div>
     <div id="hud">
-      <h1>FIRST LIGHT</h1>
+      <h1>FIRST LIGHT<span id="ver">v0.9.0</span></h1>
       <p>Zero asset files. Every pixel below is generated in code, live.</p>
       <ul id="pipeline"></ul>
       <div id="btns">
         <button id="btn-vr" disabled>Enter VR</button>
         <button id="btn-ar" disabled>Enter AR</button>
         <button id="btn-audio" class="secondary">Sound on</button>
+        <button id="btn-orbit" class="secondary">Orbit view</button>
       </div>
+      <div id="controls-row">
+        <label for="input-scheme">Controls:</label>
+        <select id="input-scheme">
+          <option value="auto">Auto</option>
+          <option value="desktop">Desktop</option>
+          <option value="touch">Touch</option>
+          <option value="xr">XR headset</option>
+        </select>
+      </div>
+      <div id="input-help"></div>
       <div id="status"></div>
     </div>
-    <div id="hint">drag to look &middot; scroll to zoom</div>
+    <div id="hint"></div>
+    <div id="joystick"><div id="stick"></div></div>
     <script type="module" src="/main.ts"></script>
   </body>
 </html>
