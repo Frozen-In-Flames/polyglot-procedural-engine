@@ -22,6 +22,7 @@ export type SdfNode =
   | { kind: 'plane'; n: Vec3; h: number; mat?: number }
   | { kind: 'union'; children: SdfNode[] }
   | { kind: 'smoothUnion'; k: SdfValue; children: SdfNode[] }
+  | { kind: 'polySmin'; k: SdfValue; children: [SdfNode, SdfNode] }
   | { kind: 'subtract'; a: SdfNode; b: SdfNode }
   | { kind: 'intersect'; children: SdfNode[] }
   | { kind: 'repeat'; c: [SdfValue, SdfValue, SdfValue]; child: SdfNode }
@@ -155,9 +156,18 @@ export function evalSdf(node: SdfNode, p: Vec3, u: Uniforms = {}): SdfHit {
       }
       return acc;
     }
+    case 'polySmin': {
+      // Polynomial smooth-min: h = max(k-|a-b|,0)/k, smin = min(a,b) - (k/4) h^2.
+      // Gradient is a convex combination of children's gradients.
+      const k = Math.max(1e-9, val(node.k, u));
+      const a = evalSdf(node.children[0], p, u);
+      const b = evalSdf(node.children[1], p, u);
+      const h = Math.max(k - Math.abs(a.d - b.d), 0) / k;
+      const d = Math.min(a.d, b.d) - (k / 4) * h * h;
+      return { d, mat: a.d <= b.d ? a.mat : b.mat };
+    }
     case 'subtract': {
-      const a = evalSdf(node.a, p, u);
-      const b = evalSdf(node.b, p, u);
+      const a = evalSdf(node.a, p, u);      const b = evalSdf(node.b, p, u);
       return { d: Math.max(a.d, -b.d), mat: a.mat };
     }
     case 'intersect': {
@@ -220,6 +230,7 @@ export function collectUniforms(node: SdfNode, out: Set<string> = new Set()): Se
     case 'torus': grab(node.R); grab(node.r); break;
     case 'capsule': grab(node.r); break;
     case 'smoothUnion': grab(node.k); node.children.forEach(c => collectUniforms(c, out)); break;
+    case 'polySmin': grab(node.k); collectUniforms(node.children[0], out); collectUniforms(node.children[1], out); break;
     case 'twist': grab(node.k); collectUniforms(node.child, out); break;
     case 'displace': grab(node.amp); grab(node.freq); collectUniforms(node.child, out); break;
     case 'scale': grab(node.s); collectUniforms(node.child, out); break;
@@ -325,6 +336,12 @@ function emitNode(node: SdfNode, pExpr: string): { code: string; out: string } {
     case 'subtract': {
       const a = emitNode(node.a, pExpr), b = emitNode(node.b, pExpr);
       return { code: `${a.code}\n${b.code}\nvec2 ${t} = vec2(max(${a.out}.x, -${b.out}.x), ${a.out}.y);`, out: t };
+    }
+    case 'polySmin': {
+      const pa = emitNode(node.children[0], pExpr), pb = emitNode(node.children[1], pExpr);
+      const pk = glslVal(node.k);
+      const pcode = pa.code + '\n' + pb.code;
+      return { code: `${pcode}\nfloat ${t}h = max(${pk} - abs(${pa.out}.x - ${pb.out}.x), 0.0) / ${pk};\nvec2 ${t} = vec2(min(${pa.out}.x, ${pb.out}.x) - (${pk} / 4.0) * ${t}h * ${t}h, ${pa.out}.x <= ${pb.out}.x ? ${pa.out}.y : ${pb.out}.y);`, out: t };
     }
     case 'intersect': {
       const parts = node.children.map(c => emitNode(c, pExpr));
@@ -451,7 +468,8 @@ export function lipschitzBound(node: SdfNode, u: Uniforms = {}, opts: LipschitzO
       return 1;
     case 'union':
     case 'intersect':
-    case 'smoothUnion': {
+    case 'smoothUnion':
+    case 'polySmin': {
       let m = 0;
       for (const c of node.children) {
         const l = lipschitzBound(c, u, opts);

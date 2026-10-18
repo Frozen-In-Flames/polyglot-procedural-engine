@@ -3,6 +3,59 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [1.2.0] - V10.3 "Add all: to the engine" (2026-10-18)
+
+New subsystems (minor version per semver). Tests written before
+implementation; the identity suite is green before the tag. The
+validation ledger in docs/methods-provenance.md marks every formula
+as validated or unvalidated.
+
+- **Lipschitz bookkeeping** (`src/math/lipschitz.ts`): per-operator
+  bounds table (rigid, scale, min/max, sum, displacement, warp, twist
+  with bounded-region r_max, polynomial smooth-min); tighter local
+  bounds via interval arithmetic over the ray-segment box;
+  violation counting over random pairs. Measured looseness: warp
+  1.06x, noise displacement 1.48x, twist 2.23x, noise-gradient 1.78x.
+- **Normals** (`src/math/normals.ts`): tetrahedron technique (4
+  evaluations, measured O(h), not the remembered O(h^2)) and central
+  differences (O(h^2)) kept for comparison.
+- **Rigid bodies** (`src/math/rigid.ts`): Rodrigues exponential map,
+  quaternion integration (unit after 1e6 steps), Euler equations,
+  symplectic Euler (pendulum energy bounded).
+- **SDF collision** (`src/physics/collide.ts`): penetration, impulse
+  with restitution, Coulomb friction, XPBD contact; dropped sphere
+  rests at y = r within 1e-6 (sleeping threshold); e = 1 return
+  height within O(h).
+- **XR cameras** (`src/xr/camera.ts`): per-eye FOV tangents and IPD
+  origins, position+rotation reprojection from march depth, plus the
+  error-state attitude filter (quaternion + gyro bias; the linear
+  Kalman form is dropped). Error-state gyro-bias oracle incoming.
+- **Procedural audio** (`src/audio/theory.ts`): equal temperament,
+  additive synthesis, RBJ low-pass biquad (DC gain 1), Karplus-Strong,
+  PolyBLEP saw, Woodworth ITD, distance gain, Doppler, occlusion via
+  the soft-shadow march.
+- **Solver upgrades** (`src/inverse/robust.ts`): Huber/IRLS, LM
+  gain-ratio acceptance, sigmoid bounds, Gaussian pyramid,
+  Eikonal regularizer, uncertainty with 8-bit sigma_n = 1/(255 sqrt(12))
+  and effective n. Parameter reduction z = V_k^T (theta - theta_bar)
+  with curated manual names only (`src/inverse/reduction.ts`).
+- **Reference renderer** (`src/render/reference.ts`): rendering
+  equation with GGX importance sampling; white-furnace test never
+  exceeds 1, falls below 1 at high roughness (documented, no
+  multiple-scattering compensation).
+- **Determinism harness** (`src/math/fperror.ts`): Kahan and Knuth
+  2Sum, ULP distance with a defined NaN/infinity policy, FNV-1a
+  goldens ("" and "foobar" = 0xBF9CF968, BigInt oracle), fixed-tree
+  reductions.
+- **Rate-distortion allocation** (`src/inverse/rdalloc.ts`):
+  D_i = sqrt(12 n D/(p s_i)), b_i from ranges, SVD-basis form;
+  measured vs predicted MSE increase agree.
+- **GGX oracle port** (`test/ggx-oracle.test.ts`,
+  `docs/oracles/ggx_oracle.py`): all six identities (D normalization,
+  Smith masking, reciprocity, visibility V form, sampler moments,
+  directional albedo). The V form 1/((nl+s_l)(nv+s_v)) is now the
+  normative Cook-Torrance implementation (finite at grazing).
+
 ## [1.1.0] - V10.2 "Faithful forward model" (2026-10-18)
 
 New shading families, solvers, and subsystems (minor version per semver).

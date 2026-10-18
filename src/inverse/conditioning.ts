@@ -169,3 +169,12 @@ export function finiteJacobian(
   }
   return J;
 }
+
+/**
+ * Quantization noise floor for 8-bit targets. A uniform [0,1] target
+ * quantized to 8 bits has variance 1/12 LSB^2, so sigma_n = 1/(255 sqrt(12)).
+ * Solver diagnostics use this as the noise floor, and the effective
+ * sample count n_eff (< n, consistent with the AIC effective-n rule)
+ * wherever the resolve filter correlates neighboring pixels.
+ */
+export const SIGMA_N_8BIT = 1 / (255 * Math.sqrt(12));
