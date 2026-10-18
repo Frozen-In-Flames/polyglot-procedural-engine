@@ -1,4 +1,4 @@
-// geo/sky.ts — procedural sky dome. No textures, no cubemaps: a gradient +
+// geo/sky.ts - procedural sky dome. No textures, no cubemaps: a gradient +
 // hashed stars evaluated per-pixel in the 'sky' material effect.
 import type { Geometry } from '../scene/components.js';
 import { sphere } from './parametric.js';

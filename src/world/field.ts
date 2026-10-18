@@ -1,4 +1,4 @@
-// world/field.ts — the live shared environmental field.
+// world/field.ts - the live shared environmental field.
 //
 // GlobalField owns ONE WindField plus the six per-domain parameter sets the
 // foundry endgame exposes (one lever per engine language). Changing any
@@ -55,7 +55,7 @@ function checkPatch(domain: FieldDomain, patch: Record<string, unknown>): void {
       throw new Error(`world: '${domain}.${k}' must be a finite number`);
     }
   }
-  // Range law per domain — the foundry levers stay inside sane bounds.
+  // Range law per domain - the foundry levers stay inside sane bounds.
   const n = (k: string): number => patch[k] as number;
   const need = (k: string, ok: boolean, msg: string): void => {
     if (k in patch && !ok) throw new Error(`world: '${domain}.${k}' ${msg}`);
@@ -105,7 +105,7 @@ export class GlobalField {
     });
   }
 
-  /** Current params (a copy — mutating it changes nothing). */
+  /** Current params (a copy - mutating it changes nothing). */
   snapshot(): FieldParams { return copyParams(this.params); }
 
   /** The live wind field. Zones sample through this; it is the single
@@ -113,7 +113,7 @@ export class GlobalField {
   get wind(): WindField { return this.windField; }
 
   /** Sample the GLOBAL field in world coordinates. Every zone derives from
-   *  this call — that is the whole coherence guarantee. */
+   *  this call - that is the whole coherence guarantee. */
   sampleWorld(x: number, y: number, z: number, t: number): WindSample {
     return this.windField.sample(x, y, z, t);
   }
@@ -129,7 +129,7 @@ export class GlobalField {
     const before = JSON.stringify(this.params[domain]) + JSON.stringify(this.params.wind);
     if (domain === 'genesis') {
       // Split the patch: wind.* keys go to params.wind, the rest to params.genesis.
-      // Wind params are read live at sample time — no field rebuild needed.
+      // Wind params are read live at sample time - no field rebuild needed.
       // (genesis.seed reshapes zone terrain/noise; zones re-derive from the
       // revision bump. The wind field itself is seeded by globalSeed only.)
       for (const [k, v] of Object.entries(patch)) {
@@ -165,7 +165,7 @@ export class GlobalField {
    * The 7th lever: feed the player's embodied state into the field.
    *
    * Player state is a LIVE sample-time input to the wind field (the wake
-   * term is evaluated per sample), not a derivation parameter — so it does
+   * term is evaluated per sample), not a derivation parameter - so it does
    * NOT bump the field revision. Bumping it here used to invalidate every
    * zone's derivations each frame, forcing needless terrain rebuilds in
    * hosts that re-derive on revision changes (and letting the player's

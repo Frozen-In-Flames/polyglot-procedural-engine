@@ -1,4 +1,4 @@
-// physics/particleMesh.ts — renders a ParticleSystem as a dynamic triangle
+// physics/particleMesh.ts - renders a ParticleSystem as a dynamic triangle
 // soup. Each particle is a small tetrahedron (4 tris, 12 verts, non-indexed)
 // whose size shrinks as it dies. Dead slots collapse to a degenerate point
 // far below the world so they rasterize nothing.

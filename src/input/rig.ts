@@ -1,4 +1,4 @@
-// input/rig.ts — one camera rig that every input scheme drives.
+// input/rig.ts - one camera rig that every input scheme drives.
 // No per-device camera hacks: desktop, touch, and XR schemes all feed the
 // same rig (position + yaw/pitch), and the rig writes the scene camera node.
 // DOM-free; runs in node tests.

@@ -1,4 +1,4 @@
-// script/index.ts — public surface of the V4 scripting runtime.
+// script/index.ts - public surface of the V4 scripting runtime.
 export type {
   Caps, CapabilityName, WorldCaps, EventCaps, AudioCaps, TimeCaps, ProbeCaps,
   EntityHandle, TransformData, NoteEvent, SfxSpec, SfxKind, MoodPartial, ScriptDef,

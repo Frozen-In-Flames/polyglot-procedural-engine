@@ -1,5 +1,5 @@
 // Unit tests for V4 step 3: First Light (the game).
-// Runs headless in node against MemoryEntityBackend — no renderer, no DOM.
+// Runs headless in node against MemoryEntityBackend - no renderer, no DOM.
 // Covers: shared math (gust front, stillwater ride, thresholds), the step-3
 // API fixes (spawn bodies, probe, script-portal adoption, host event tap),
 // and the game logic that is testable headless: attunement scoring, the
@@ -176,7 +176,7 @@ test('first-light: host taps script-originated events only', () => {
 
 test('first-light: moving with the wind raises attunement; fighting it lowers it', () => {
   const { field, rt } = makeStack();
-  // NOTE: playerScript is deliberately NOT loaded here — it would overwrite
+  // NOTE: playerScript is deliberately NOT loaded here - it would overwrite
   // the pinned player:vel each frame. The attunement script only reads.
   const ecaps = rt.load(embersScript, { grants: EMBER_GRANTS });
   const acaps = rt.load(attunementScript, { grants: ATTUNE_GRANTS });

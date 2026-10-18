@@ -1,4 +1,4 @@
-// state/index.ts — public surface of the V5 distributed-state-graph module.
+// state/index.ts - public surface of the V5 distributed-state-graph module.
 //
 // THE ORDER LAW (conflict resolution without authority):
 //   There is no central server, no leader, no voting. Every node accepts ops

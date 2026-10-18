@@ -1,4 +1,4 @@
-// build/seal.ts — the membrane between behavior scripts and the host.
+// build/seal.ts - the membrane between behavior scripts and the host.
 //
 // Live behavior scripts run in a fresh vm realm (see compile.ts), so they
 // cannot see host globals at all. The one remaining crossing is the
@@ -14,7 +14,7 @@
 //     of a capability call;
 //   - sealed objects are read-only: writes, deletes, and construction throw.
 //
-// What the script CAN do is exactly what the granted capabilities allow —
+// What the script CAN do is exactly what the granted capabilities allow -
 // the V4 capability-closure guarantee, now with the prototype escape closed.
 
 import type { Caps, EntityHandle, JSONValue, TransformData } from '../script/index.js';
@@ -65,7 +65,7 @@ export function seal<T>(value: T, seen: WeakMap<object, unknown> = new WeakMap()
       // fresh copies) report a null prototype, so the constructor chain is
       // gone entirely. Frozen targets cannot legally report null; the
       // facade never hands a frozen object to a script (freshCopy), so
-      // this path only triggers if the host itself leaks one — and the
+      // this path only triggers if the host itself leaks one - and the
       // get trap above still blocks direct 'constructor' reads.
       return Object.isExtensible(t) ? null : Reflect.getPrototypeOf(t);
     },

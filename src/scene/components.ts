@@ -1,4 +1,4 @@
-// scene/components.ts — Mesh, Light, Camera, Script.
+// scene/components.ts - Mesh, Light, Camera, Script.
 import type { Component, SceneNode } from './node.js';
 import type { Vec3 } from '../math/vec.js';
 import { v3 } from '../math/vec.js';
@@ -55,7 +55,7 @@ export class Camera implements Component {
   constructor(public aspect = 16 / 9) {}
 }
 
-/** Script hook — the seam the C# ScriptProvider implements against. */
+/** Script hook - the seam the C# ScriptProvider implements against. */
 export abstract class Script implements Component {
   node: SceneNode | null = null;
   start(): void {}

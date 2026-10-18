@@ -1,4 +1,4 @@
-// bridge/distill.ts — runtime side of V3 distillation.
+// bridge/distill.ts - runtime side of V3 distillation.
 //
 // The foundry (python/xrgen/inverse.py) runs once, offline, and emits a
 // plain JSON bundle. This module loads that bundle at runtime through the

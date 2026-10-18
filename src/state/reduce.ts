@@ -1,4 +1,4 @@
-// state/reduce.ts — the deterministic total order and the pure reducer (V5 step 2).
+// state/reduce.ts - the deterministic total order and the pure reducer (V5 step 2).
 //
 // THE ORDER LAW (the whole conflict-resolution story):
 //   There is no central authority, no voting, no leader election. Every node

@@ -1,9 +1,9 @@
-// physics/particles.ts — the engine's physics core (v2).
+// physics/particles.ts - the engine's physics core (v2).
 //
 // A seeded particle system: semi-implicit Euler integration, gravity, drag,
 // and collision against a heightfield collider (the procedural terrain).
 // Pure functions of (seed, params) wherever possible; the system itself is
-// deterministic — same seed, same particle paths, on every machine.
+// deterministic - same seed, same particle paths, on every machine.
 //
 // v2 runs this in TypeScript. The interface is deliberately narrow
 // (spawn/step/collide) so a future C++ port can drop in behind it.

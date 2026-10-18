@@ -1,8 +1,8 @@
-// build/entities.ts — entity seeding: plant a seed and the math grows it.
+// build/entities.ts - entity seeding: plant a seed and the math grows it.
 //
 // There are no assets to place, so seeding never positions a mesh. It
-// derives a procedural body descriptor from (kind, seed) — geometry kind,
-// proportions, and material are all fixed by the seed — and grows the
+// derives a procedural body descriptor from (kind, seed) - geometry kind,
+// proportions, and material are all fixed by the seed - and grows the
 // entity through the script spawn capability. Same kind + same seed =
 // the same entity on every node, forever.
 

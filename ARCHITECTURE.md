@@ -1,4 +1,4 @@
-# Polyglot Procedural Engine (PPE) — Architecture (v1, due Nov 10 2026)
+# Polyglot Procedural Engine (PPE) - Architecture (v1, due Nov 10 2026)
 
 Personal engine for Aries. Not a company product. One vision, sliced so v1 actually ships.
 
@@ -27,7 +27,7 @@ scales to every platform natively.
 The whole point of v1 is to **demonstrate the languages working together to
 replace assets**. So v1 is polyglot from day one, not TypeScript-only:
 
-| Language | v1 role — real, working, in the demo |
+| Language | v1 role - real, working, in the demo |
 |---|---|
 | TypeScript | Host: scene graph, procedural materials, WebGL2 renderer, WebXR sessions, orchestration. Runs everywhere with a browser (Quest browser, desktop, phone AR). |
 | C++ → WASM | Heavy procedural generation compiled to WebAssembly and called live from TypeScript: seeded noise fields, terrain heightfields, geometry synthesis. Audio: renders the seeded DSP bass voice (`xr_dsp_voice`) straight to samples. Measurably faster than JS, proving why the number-crunching lives here. |
@@ -43,29 +43,29 @@ cooperation. That visible pipeline IS the v1 deliverable, as much as the world i
 ### Modules
 
 **TypeScript (`src/`):**
-- **math** — vec2/3/4, mat4, quat. No dependencies. Column-major, WebGL convention.
-- **scene** — node graph (parent/child transforms), component model
+- **math** - vec2/3/4, mat4, quat. No dependencies. Column-major, WebGL convention.
+- **scene** - node graph (parent/child transforms), component model
   (Mesh, Light, Camera, Script). Deterministic update order.
-- **geo** — procedural geometry generators. Nothing loaded from disk:
+- **geo** - procedural geometry generators. Nothing loaded from disk:
   parametric surfaces (planes, spheres, tori, tubes along curves), heightfield
   terrain from seeded noise (noise itself computed in the C++ WASM module),
   particle clouds, fractal structures, text as signed-distance glyphs rendered
   to canvas at runtime (still generated, not an asset).
-- **material** — procedural shader materials. Shader source is generated from
+- **material** - procedural shader materials. Shader source is generated from
   node-composed snippets (color ramps, noise, fresnel, grid, wireframe).
-- **render** — thin WebGL2 renderer owned by the engine (no Three.js): command
+- **render** - thin WebGL2 renderer owned by the engine (no Three.js): command
   list, frustum culling, forward lighting (1 dir + 4 point in v1). Exposes the
   `Renderer` interface so future C++/Vulkan or Swift/Metal backends slot in.
-- **xr** — WebXR session manager: `immersive-vr`, `immersive-ar` (hit-test,
+- **xr** - WebXR session manager: `immersive-vr`, `immersive-ar` (hit-test,
   anchors, plane detection where available), controller + hand input abstraction,
   graceful fallback to inline magic-window 3D when no headset is present.
   Exposes the `SessionProvider` interface the Swift/Kotlin providers implement.
-- **audio** — WebAudio spatial graph (HRTF panning), synthesized SFX (no audio
+- **audio** - WebAudio spatial graph (HRTF panning), synthesized SFX (no audio
   files), and the integration seam for the procedural music engine (`pmve`):
   engine scenes can drive generative music parameters per-frame.
-- **bridge** — the FFI seams: WASM loader for the C++ module, `ScriptProvider`
+- **bridge** - the FFI seams: WASM loader for the C++ module, `ScriptProvider`
   interface for C#, `SessionProvider` interface for Swift/Kotlin.
-- **script** (V4) — sandboxed execution runtime: the platform surface. Scripts
+- **script** (V4) - sandboxed execution runtime: the platform surface. Scripts
   get exactly ONE frozen capability object (`Caps`): seeded RNG, read-only
   clock, entity spawn/query/transform, procedural world-state store, event
   bus, one-way audio sink. Sealed entity handles, graduated capability grants
@@ -76,11 +76,11 @@ cooperation. That visible pipeline IS the v1 deliverable, as much as the world i
   capability-closure, not malicious-actor containment. Reference scripts
   port the C# `ScriptProvider` behaviors (float bob+spin; bit-exact arp+hats
   composition).
-- **games/first-light** (V4 step 3) — the proof game: a first-person
+- **games/first-light** (V4 step 3) - the proof game: a first-person
   perception game (gather embers, hidden attunement score, a gust-gated
   secret portal) plus a foundry endgame (six in-world levers, one per
   language/domain, writing live through `field.write.*` grants; the
-  player's own motion stirs the field — the 7th lever). Written as an
+  player's own motion stirs the field - the 7th lever). Written as an
   external developer would write it: game code lives in
   `games/first-light/` and touches only the public API (`src/script`,
   `src/world`, engine public surface). Every engine gap became an API fix
@@ -92,7 +92,7 @@ cooperation. That visible pipeline IS the v1 deliverable, as much as the world i
   `GlobalField.setPlayerState` no longer bumps the field revision
   (player state is a live sample-time input, not a derivation parameter).
   See `games/first-light/README.md`.
-- **build** (V5) — in-session build tools: the instrument, not an
+- **build** (V5) - in-session build tools: the instrument, not an
   editor. Field brushes (seeded, bounded, multi-directional local wind
   offsets, pure functions of seed and params), rhythm tuning (convex blend of
   global tempo with local regions), entity seeding (`rock-cluster`,
@@ -100,12 +100,12 @@ cooperation. That visible pipeline IS the v1 deliverable, as much as the world i
   scripting (fresh `node:vm` realm on the host, `Math.random` throws,
   Proxy-membraned capability facades). Fluent `Instrument` API; every action
   emits one `BuildOp` on the shared op schema.
-- **state** (V5) — distributed state graph: operation-based deterministic
+- **state** (V5) - distributed state graph: operation-based deterministic
   replication with no central authority. Hash-chained op log, total order
   (t, actor, seq) as the conflict-resolution law, idempotent apply,
   snapshot/restore, `stateHash` convergence proofs. One seed, one ocean:
   foreign-seed ops are rejected.
-- **own** (V6) — off-chain ownership, $0 budget, zero new dependencies.
+- **own** (V6) - off-chain ownership, $0 budget, zero new dependencies.
   Provenance graph (pure functions over the op log: entity to author to
   creation ops, content-hashed, idempotent). Signed minting: Ed25519
   manifests (vendored pure-TypeScript Ed25519 + SHA-512, RFC 8032 verified,
@@ -123,17 +123,17 @@ cooperation. That visible pipeline IS the v1 deliverable, as much as the world i
   `src/own/index.ts` surface stays chain-free. Platform spends $0; the
   user pays their own gas only on explicit opt-in. Chain adapter: types-only interface for V7 (`ChainAdapter`,
   `AnchorReceipt`); the engine never depends on a chain.
-- **games/workshop** (V5 step 3) — the session proof: a scripted live build
+- **games/workshop** (V5 step 3) - the session proof: a scripted live build
   session on the public surface only (terrain zone, sky, 320 wind-driven
   embers). Six deterministic phases with byte-identical screenshots:
   pristine, brush bends the wind, seed becomes stone, rhythm quickens,
   stone learns to breathe, two builders one ocean (two StateNodes, shuffled
   delivery, identical stateHash). Zero console errors.
-- **world** (V4 step 2) — world composition over one shared seeded wind
+- **world** (V4 step 2) - world composition over one shared seeded wind
   field. Zone descriptors are plain JSON (seed + generator params + bounds +
   wind weights + portals), validated on load; per-zone wind derives from the
   global field, never a per-zone seed. `GlobalField` holds the field plus the
-  six live domain parameters (scene/genesis/biome/tempo/light/presence — the
+  six live domain parameters (scene/genesis/biome/tempo/light/presence - the
   foundry levers, one per language) with revision-tracked downstream
   re-derivation. `ComposedWorld` stitches independently authored zones via
   first-class portal entities (handoff preserves entity identity and state).
@@ -143,20 +143,20 @@ cooperation. That visible pipeline IS the v1 deliverable, as much as the world i
   `caps.field.set` (`field.write.*` grants); `world.spawn` accepts portal
   link options.
 
-**C++ (`native/`)** — `gen/` procedural generation core: seeded simplex noise,
+**C++ (`native/`)** - `gen/` procedural generation core: seeded simplex noise,
 heightfield synthesis, mesh synthesis (grid/radial). Compiled to WASM for v1
 (same code compiles to native later for the performance core). Pure functions of
-(seed, params) — no I/O, no assets.
+(seed, params) - no I/O, no assets.
 
-**C# (`dotnet/`)** — `ScriptProvider` implementation: scene scripts as C# classes
+**C# (`dotnet/`)** - `ScriptProvider` implementation: scene scripts as C# classes
 implementing the engine's script interface. v1: compiles, unit-tested against a
 mock host.
 
-**Swift (`swift/`)** — `VisionOSProvider`: `SessionProvider` conformance using
+**Swift (`swift/`)** - `VisionOSProvider`: `SessionProvider` conformance using
 RealityKit/ARKit types. v1: compiles under the Swift toolchain; session wiring
 is post-v1.
 
-**Kotlin (`kotlin/`)** — `AndroidXRProvider`: `SessionProvider` against OpenXR
+**Kotlin (`kotlin/`)** - `AndroidXRProvider`: `SessionProvider` against OpenXR
 mobile bindings. v1: compiles; device wiring post-v1.
 
 ### The demo (`demo/`)

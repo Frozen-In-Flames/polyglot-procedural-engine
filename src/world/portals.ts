@@ -1,4 +1,4 @@
-// world/portals.ts — portals as first-class entities + handoff logic.
+// world/portals.ts - portals as first-class entities + handoff logic.
 //
 // A portal is an ENTITY (it has a transform, a tag, an id) whose record
 // carries a PortalLink: where it leads and where the traveler lands.
@@ -9,17 +9,17 @@
 //          portal: { targetZone: 'mote-hollow', targetSpawn: [x,y,z],
 //                    radius: 3, label: '...' } })
 //     (the `portal` spawn option is the minimal step-2 extension to the
-//     runtime API — additive, no redesign).
+//     runtime API - additive, no redesign).
 //
 // Handoff semantics (crossPortal):
-//   - the traveler's ENTITY SURVIVES: same id, same name, same tag —
+//   - the traveler's ENTITY SURVIVES: same id, same name, same tag -
 //     identity is never re-created, so handles and per-entity handlers
 //     stay valid across the transition;
 //   - transform is re-seated at the target zone's spawn (target zone offset
 //     + targetSpawn), rotation/scale preserved;
 //   - procedural world-state persists (same runtime), so state continuity is
 //     structural; the loader additionally records the crossing;
-//   - `portal:exit` fires on the source side, `portal:enter` on arrival —
+//   - `portal:exit` fires on the source side, `portal:enter` on arrival -
 //     scripts subscribe to these like any other event;
 //   - a per-entity cooldown prevents immediate re-triggering when the
 //     target spawn sits inside another portal's radius.

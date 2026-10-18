@@ -1,4 +1,4 @@
-// state/hash.ts — canonical JSON + FNV-1a hashing (V5 step 2).
+// state/hash.ts - canonical JSON + FNV-1a hashing (V5 step 2).
 //
 // Two nodes prove convergence by comparing stateHash: FNV-1a over the
 // canonical JSON of the reduced state. The same bytes in, the same hash out,

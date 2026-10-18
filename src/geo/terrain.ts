@@ -1,4 +1,4 @@
-// geo/terrain.ts — heightfield terrain. The height sampler is injected so the
+// geo/terrain.ts - heightfield terrain. The height sampler is injected so the
 // C++ WASM noise core can drive it; the TS fallback noise works too.
 import type { Geometry } from '../scene/components.js';
 
@@ -11,7 +11,7 @@ export interface TerrainOptions {
   sampler: HeightSampler; // returns [0,1]
   generatedBy?: string; // which language computed the heights
   /**
-   * Wind texture (V4 step 2 — "terrain is the water"). Optional hook that
+   * Wind texture (V4 step 2 - "terrain is the water"). Optional hook that
    * lets the shared wind field write its structure into the land itself:
    * a directional ripple added to heights, plus a lean applied to normals
    * along the local wind. The pattern reads on the ground the player

@@ -1,4 +1,4 @@
-// input/detect.ts — pick the right input scheme for the device.
+// input/detect.ts - pick the right input scheme for the device.
 // DOM-free: capabilities are collected from an injected environment object,
 // so detection is unit-testable in node and the demo passes the real
 // navigator/window at startup.

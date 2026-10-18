@@ -1,4 +1,4 @@
-// xr/webxr.ts — WebXR SessionProvider (the v1 host implementation).
+// xr/webxr.ts - WebXR SessionProvider (the v1 host implementation).
 // Handles immersive-vr, immersive-ar (hit-test, anchors where available),
 // and reports what the device actually supports.
 import type {

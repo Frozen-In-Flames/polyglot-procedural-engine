@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""xrgen.bridge — JSON-lines RPC over stdio.
+"""xrgen.bridge - JSON-lines RPC over stdio.
 
 Run:  python3 -m xrgen.bridge        (from the python/ directory)
       python3 xrgen/bridge.py        (also works; path is fixed up below)

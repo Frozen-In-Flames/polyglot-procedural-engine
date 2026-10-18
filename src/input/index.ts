@@ -1,4 +1,4 @@
-// input/index.ts — unified input system (V9): one camera rig, every device.
+// input/index.ts - unified input system (V9): one camera rig, every device.
 export { CameraRig, ZERO_INTENT } from './rig.js';
 export type { MoveIntent, RigMode } from './rig.js';
 export { collectCaps, pickScheme, schemeLabel } from './detect.js';

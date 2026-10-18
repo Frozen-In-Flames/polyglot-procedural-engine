@@ -1,4 +1,4 @@
-// build/rhythm.ts — rhythm tuning: local rhythmic behavior parameters.
+// build/rhythm.ts - rhythm tuning: local rhythmic behavior parameters.
 //
 // A tuning sets the ember tempo and mote energy inside a disc. Sampling is a
 // smooth weighted blend of the global tempo params (read live from the

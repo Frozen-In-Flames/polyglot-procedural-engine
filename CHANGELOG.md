@@ -3,7 +3,59 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
-## [0.9.0] — V9 (2026-10-15)
+## [1.0.0] - V10 (2026-10-18)
+
+The math-first MVP. The engine is defined by its own capability checklist
+now (see docs/mvp.md): SDF math rendering, inverse solvers, the Tuning
+Deck, semantic world building, scripting, physics, audio, and unified
+input. Zero asset dependence throughout: every pixel is math.
+
+- **SDF math library** (`src/math/sdf.ts`): primitives (sphere as
+  ||x|| - r, box, torus, capsule, plane), booleans (union as min(f1,f2),
+  exponential smooth-min, subtract, intersect), domain warping (repeat,
+  twist, displacement), seeded value-noise/fbm. Sphere tracing per spec:
+  t_{k+1} = t_k + f(o + t_k d) until f(x) < epsilon (1e-3) or t exceeds max
+  distance (100). The same AST compiles to GLSL, so CPU and GPU evaluate
+  the identical field.
+- **SDF raymarching renderer** (`src/render/raymarch.ts`): WebGL2 fragment
+  raymarcher returning depth and normal per ray (normals via central
+  differences of f), with soft shadows and ambient occlusion computed from
+  the field itself. Shaded/depth/normal debug views.
+- **Inverse solvers** (`src/inverse/solvers.ts`): classical least squares
+  plus gradient descent, finite-difference gradients (documented 1e-5
+  step), no autodiff, no neural pipelines. Inverse lighting (intensities
+  and colors), inverse light position (drags light_pos until the render
+  matches, the acceptance-demo solver), inverse material fit with honest
+  R^2 gating. Every solve logs iterations and residual; bad fits report
+  failure, never silently. Documented limits: Lambertian baseline, known
+  sample geometry, no shadows in the solve.
+- **Tuning Deck** (`src/ui/tuning.ts`): parameter panel with sliders, dials,
+  and curve editors driving world math live. Replaces the
+  asset-browser/inspector concept: there are no files, only numbers.
+- **Semantic world building** (`src/world/semantic.ts`): Organicness,
+  Sharpness, Warp, Spread, Density, each mapping u in [0,1] through
+  g(u) = a*u^2 + b*u + c_0 to coefficient bundles, with (a, b, c_0)
+  documented per slider. Composable SDF blocks (mound, pillar, arch,
+  stone field).
+- **docs/mvp.md**: the engine's own MVP capability checklist, each item
+  with what it does, how the math achieves it, honest limits, and future
+  work. **docs/methods-provenance.md**: IP hygiene ledger recording that
+  every V10 method is classical public mathematics implemented from first
+  principles.
+- **Acceptance demo** (`demo/v10.html`, live on GitHub Pages): the 4-step
+  recipe end to end - SDF world, raymarch, Lambert, then the inverse
+  solver dragging the light to a "brighter" target with the iteration log
+  showing convergence. Tuning Deck drives it live; V9 input schemes drive
+  the camera.
+- Full suite green: 272/272 TypeScript (226 baseline plus 46 new),
+  87/87 Python. Zero new runtime dependencies.
+
+Honest limits: raymarching is bounded by the step budget (features below
+epsilon can be missed); the lighting solver inverts the Lambert baseline
+only; no rigid-body engine yet; real-headset XR verification stays an
+honest open item.
+
+## [0.9.0] - V9 (2026-10-15)
 
 Controls work on all device types. V9 adds a unified input system: one camera
 rig that every input scheme drives, with no per-device camera hacks.
@@ -33,54 +85,54 @@ the WebXR spec and unit-tested with injected controller snapshots, but have
 not been verified on a real headset yet. Pointer lock requires a user click
 and is unavailable in some embedded browsers, where drag look remains.
 
-## [0.8.0] — V8 (2026-10-13)
+## [0.8.0] - V8 (2026-10-13)
 
-The engine gets ears — zero audio files. V7 let the user own what they made;
+The engine gets ears - zero audio files. V7 let the user own what they made;
 V8 lets them hear it. A full procedural audio engine with zero asset
 dependence: every oscillator, grain, and reverb tail is math evaluated at
 runtime, seeded and deterministic, like every pixel already was.
 
 ### Per-language contributions
 
-- **TypeScript** (`src/audio/`): the mix graph (`graph.ts` — master, music,
+- **TypeScript** (`src/audio/`): the mix graph (`graph.ts` - master, music,
   SFX, and voice buses; bus gains are the conductor's faders), the extended
-  spatial graph (`spatial.ts` — entity-bound emitters, reverb zones,
-  occlusion), the conductor (`score.ts` — game-state vector to per-language
+  spatial graph (`spatial.ts` - entity-bound emitters, reverb zones,
+  occlusion), the conductor (`score.ts` - game-state vector to per-language
   layer gains as pure, unit-testable functions), the WASM DSP bridge
   (`dsp.ts`), the TypeScript sample-rendering mirror of the C++ core
   (`synth.ts`), and the offline foundry bundle loader (`foundry.ts`). Web
   Audio is a browser platform API, not a dependency.
-- **C++ → WASM** (`native/gen/dsp/`): the DSP core — polyBLEP oscillator
+- **C++ → WASM** (`native/gen/dsp/`): the DSP core - polyBLEP oscillator
   bank, FM operator stacks, granular engine (grains over synthesized
   sources, never loaded samples), Karplus-Strong plucks, modal resonator
   bells, filter suite, and generated impulse responses. Pure functions of
   (seed, params), double-precision phase, EMSCRIPTEN_KEEPALIVE exports,
   same toolchain as the noise core.
-- **Python** (`python/xrgen/`): composition keeps its role — it composes,
+- **Python** (`python/xrgen/`): composition keeps its role - it composes,
   never renders. `AdaptiveComposer` (seed plus state vector to score doc),
   the `score.py` arrangement library (progression families, voice-leading,
   density curves; TypeScript mirrors the determinism-critical subset), and
   the offline `audio_foundry.py` (IR design, spectrum analysis, long-texture
   baking into JSON parameter bundles).
-- **C#**: the arp + hats layer gains density control — hats thin out at low
+- **C#**: the arp + hats layer gains density control - hats thin out at low
   energy, the arp climbs octaves with brightness.
-- **Swift**: the sparkle pings gain the orbit — pan paths widen with
+- **Swift**: the sparkle pings gain the orbit - pan paths widen with
   attunement, so the listener hears the space open up.
-- **Kotlin**: the sub pulse stays the anchor — one clean voice on the low
+- **Kotlin**: the sub pulse stays the anchor - one clean voice on the low
   end, its drop deepening as tension rises.
 
 ### The conductor (`src/audio/score.ts`, `src/audio/graph.ts`)
 
 The engine no longer loops a track; it performs one. A game-state vector
 (energy, tension, attunement, brightness, tempo) drives per-language layers
-with per-bar crossfades. Layers enter and leave whole — nothing hard-cuts;
+with per-bar crossfades. Layers enter and leave whole - nothing hard-cuts;
 the music breathes. Scripts push state one-way through the caps
 (`caps.audio.mood(partial)`); the host validates, owns every node, and
 plays.
 
 ### First Light: the resonance moment
 
-The hidden attunement score — six thresholds, one per engine language —
+The hidden attunement score - six thresholds, one per engine language -
 becomes the conductor's deepest input, and it is heard, never shown. Level
 by level the world answers: the sub pulse enters (the world gains a
 heartbeat); the pad filter opens with brightness (the air clears); the arp
@@ -88,11 +140,11 @@ fades in tempo-locked to the wind's rhythm regions; the sparkle orbit
 widens (the space itself feels larger); a sparse pentatonic melody enters,
 calling toward the gate; and at resonance every layer retunes to a
 just-intonation lattice on the gate's root (174.6 Hz). The beating between
-detuned voices — present all game as texture — resolves into consonance.
+detuned voices - present all game as texture - resolves into consonance.
 The world tunes itself when the player does, and the opening is heard
 before it is seen. Fight the wind and the path runs in reverse: the layers
 thin out, the tuning loosens. The ear learns the mechanic the eyes never
-explain. No UI, no numbers — a scripted playthrough reaching resonance is
+explain. No UI, no numbers - a scripted playthrough reaching resonance is
 the acceptance test you can hear with your eyes closed. The attunement
 script pushes `{attunement, energy, tension, brightness}` every frame and
 publishes the gate's root frequency through world state (`gate:rootFreq`).
@@ -111,8 +163,8 @@ budget with (loudness × proximity) priority stealing, documented.
 
 ### Verification
 
-Verification: TS suite — 200 tests green (24 new audio-v8 tests); Python
-suite — 87 tests green (32 new audio-v8 tests); C++ DSP renders — native
+Verification: TS suite - 200 tests green (24 new audio-v8 tests); Python
+suite - 87 tests green (32 new audio-v8 tests); C++ DSP renders - native
 determinism suite all-pass plus WASM smoke test of all 8 xr_dsp_* exports;
 `tsc` clean; zero new runtime dependencies.
 Honestly remaining: real-headset audio, on-device provider wiring
@@ -122,7 +174,7 @@ Honestly remaining: real-headset audio, on-device provider wiring
 
 See it (V1), play it (V4), build it (V5), own it (V6/V7), hear it (V8).
 
-## [0.7.0] — V7 (2026-10-12)
+## [0.7.0] - V7 (2026-10-12)
 
 Bring your own chain. V6 built the complete ownership system off-chain;
 V7 lets the user anchor it on-chain wherever they choose. The engine stays
@@ -163,7 +215,7 @@ Adapter tests run against a mock JSON-RPC transport: no real chain, no
 real gas, $0. Honestly remaining: a real on-chain anchor (needs the user's
 own wallet and their own gas), real headset test, real DLSS frame capture.
 
-## [0.6.0] — V6 (2026-10-12)
+## [0.6.0] - V6 (2026-10-12)
 
 Ownership, fully off-chain, at $0. V5 made building real; V6 makes owning
 real. The arc: V1 proved the math, V4 proved the game, V5 proved the
@@ -212,7 +264,7 @@ own gas, the platform stays $0.
 - Zero new runtime dependencies. No node builtins in the runtime modules.
 - Not in V6: anything on-chain, wallet code, a marketplace.
 
-## [0.5.0] — V5 (2026-10-11)
+## [0.5.0] - V5 (2026-10-11)
 
 Build inside the play session. V4 proved a player can become a dev; V5 makes
 every session a dev session. Not an editor, an instrument: you do not
@@ -245,8 +297,8 @@ Operation-based deterministic replication. No central authority.
 
 - Hash-chained op log (`prev` = FNV-1a of the previous op); `GENESIS_PREV`
   starts every actor chain.
-- The total order **(t, actor, seq)** — Lamport time, actor id, per-actor
-  sequence — IS the conflict resolution. Two ops on the same target both
+- The total order **(t, actor, seq)** - Lamport time, actor id, per-actor
+  sequence - IS the conflict resolution. Two ops on the same target both
   apply; the later in the order wins on every node, every time.
 - Idempotent apply, snapshot/restore, `stateHash` convergence proofs.
 - Session-membership rule: foreign-seed ops rejected, one seed one ocean.
@@ -263,10 +315,10 @@ Zero console errors.
 
 95/95 TypeScript tests, 55/55 Python tests, zero new runtime dependencies.
 
-## [0.4.0] — V4 step 3 in progress (2026-10-10)
+## [0.4.0] - V4 step 3 in progress (2026-10-10)
 
 FIRST LIGHT: one real game, built as an external developer would build it
-— game code lives in `games/first-light/` and touches ONLY the public API
+- game code lives in `games/first-light/` and touches ONLY the public API
 (`src/script`, `src/world`, engine public surface). Every gap the game
 needed became a documented API fix in `src/`, not a workaround. The V4
 proof: the platform holds.
@@ -275,13 +327,13 @@ proof: the platform holds.
 
 First-person walker across the three sample zones, linked by portals.
 Visible goal: gather wind-blown embers, carry them to the dark gate.
-Hidden goal: **attunement** — a hidden 0–100 score rewarding embodied
+Hidden goal: **attunement** - a hidden 0–100 score rewarding embodied
 prediction (A: velocity aligned with the local wind; B: standing where an
 ember current will carry an ember within seconds; C: holding still as a
 gust front passes). Felt, never explained: no UI, no numbers, no hints.
 The gate brightens per ember delivered but OPENS only at attunement
 level 6 (resonance, not collection). A plain-sight portal in mote-hollow
-— crossable only by moving with a gust — leads to the foundry: six
+- crossable only by moving with a gust - leads to the foundry: six
 in-world levers (TypeScript=scene, C++/WASM=genesis, Python=biome,
 C#=tempo, Swift=light, Kotlin=presence), each writing its domain live
 through top-tier grants while the composed world re-derives downstream.
@@ -291,7 +343,7 @@ the foundry's wake rings.
 `games/first-light/`: `main.ts` (host), `world-view.ts` (dressing),
 `zones.ts` (3 sample zones + foundry), `shared.ts`, 8 scripts
 (player/embers/motes/attunement/gate/secret/foundry/levers), own
-tsconfig + vite build. `test/first-light.test.ts`: 16 tests —
+tsconfig + vite build. `test/first-light.test.ts`: 16 tests -
 attunement scoring up/down, level emissions, gate open condition, ember
 delivery brightening, secret-portal adoption + crossing, lever→domain
 wiring + grant denial, portal auto-adoption, probe, onEvent tap.
@@ -304,7 +356,7 @@ zero console errors; screenshots in `games/first-light/dist-shots/`.
 - `world.spawn` accepts procedural **`body` descriptors**
   (`SpawnBody`: sphere/box/cone/torus/octahedron/prism + material:
   baseColor/effects/unlit). New `src/script/bodies.ts` (engine-side
-  builder — one geometry/material path for every backend),
+  builder - one geometry/material path for every backend),
   `sanitizeBody()` in the sandbox (dims clamped, effects allow-listed,
   `generatedBy` forced to the script name for provenance), `spawn` in both
   backends extended (`SceneEntityBackend` attaches a `Mesh`,
@@ -325,14 +377,14 @@ zero console errors; screenshots in `games/first-light/dist-shots/`.
   promised it; the runtime never set it).
 - `renderer.ts` **`sphereInFrustum` fix**: meshes whose bounding-sphere
   center sat behind the camera were culled even when the camera was
-  *inside* the sphere — the normal case for a walker on a 120-unit
+  *inside* the sphere - the normal case for a walker on a 120-unit
   terrain, which rendered as missing ground. Now: center-behind-camera
   culls only when the camera is strictly outside the sphere.
 - `GlobalField.setPlayerState` **no longer bumps the field revision**:
   player state is a live sample-time input to the wind field, not a
   derivation parameter. Bumping it invalidated every zone's derivations
   each frame (and leaked the player's momentary position into the
-  anchor-mean probes). The 7th lever still works — the wake is evaluated
+  anchor-mean probes). The 7th lever still works - the wake is evaluated
   per sample.
 
 ### Fixed
@@ -343,30 +395,30 @@ zero console errors; screenshots in `games/first-light/dist-shots/`.
 - The sun is aimed from the front-top so camera-facing slopes read in
   diffuse instead of ambient + a specular streak.
 
-## [0.4.0] — V4 step 2 in progress (2026-10-10)
+## [0.4.0] - V4 step 2 in progress (2026-10-10)
 
 World composition: independently authored zones stitch into one coherent
 world over a single shared seeded wind field. Local generation, global
-coherence — the architectural law made mechanical.
+coherence - the architectural law made mechanical.
 
 ### Added
-- `src/world/` — zone descriptors, portals, the composed world loader, and
+- `src/world/` - zone descriptors, portals, the composed world loader, and
   the shared wind field:
   - `types.ts`: `ZoneDescriptor` (seed + generator params + bounds + wind
-    weights + portal list) as PLAIN JSON — an independent developer authors
+    weights + portal list) as PLAIN JSON - an independent developer authors
     a zone without touching engine internals. `parseZoneDescriptor`
     validates strictly and REJECTS any `wind.seed`: per-zone wind derives
     from the global field, never from an independent per-zone seed (the law,
     enforced at the door). The six live domain parameter sets
     (`scene/genesis/biome/tempo/light/presence`, one lever per language).
-  - `wind.ts`: the global seeded procedural vector field —
+  - `wind.ts`: the global seeded procedural vector field -
     `W(p,t) = gain * Σ_k env_k(p) * gust_k(p,t) * dir_k(p,t)`, four layers,
     each with its own wavelength (14/22/34/52 units), temporal frequency,
     flow axis, amplitude, phase, and fbm force envelope, all drawn from
     mulberry32 mixed with the global seed. Multi-directional at every point,
     force varying across subsections, time-varying, bit-deterministic. The
     player's embodied state (position/speed/rhythm) stirs the field locally
-    — the 7th lever — deterministically.
+    - the 7th lever - deterministically.
   - `field.ts`: `GlobalField` owns one `WindField` plus the six live domain
     params. `setDomain()` validates, merges, bumps `revision`, and notifies
     listeners: the foundry endgame's mechanical foundation. Wind's global
@@ -374,13 +426,13 @@ coherence — the architectural law made mechanical.
   - `zones.ts`: `Zone` binds a descriptor to the shared field. Local wind =
     `global(p_world, t) * gustScale + anchorMean * biasWeight`, where
     `anchorMean` is the global field averaged over a probe ring at the zone
-    anchor — the zone's prevailing wind read off the ocean, never invented.
+    anchor - the zone's prevailing wind read off the ocean, never invented.
     Terrain/sky derive from the zone seed XOR the live genesis seed, so the
     levers reshape them deterministically.
   - `portals.ts` / `loader.ts`: portals as first-class entities
     (transform + tag + engine-side `PortalLink`); `ComposedWorld` validates
     and stitches descriptor arrays, spawns portal entities, and drives
-    handoff — the traveler keeps its entity id/name/tag, lands at the
+    handoff - the traveler keeps its entity id/name/tag, lands at the
     target zone's spawn, world-state persists, `portal:exit`/`portal:enter`
     fire, and a cooldown prevents bounce-back. Dangling links never
     teleport. Seam continuity is structural: every zone samples the same
@@ -389,21 +441,21 @@ coherence — the architectural law made mechanical.
     shimmer-flats) with distinct local character over one ocean, chained by
     portals.
 - Terrain is the water: `src/geo/terrain.ts` gained an optional `shimmer`
-  hook — a directional ripple baked into heights plus a normal lean along
-  the local wind — and `Zone.buildTerrain()`/`windShimmer()` drive it from
+  hook - a directional ripple baked into heights plus a normal lean along
+  the local wind - and `Zone.buildTerrain()`/`windShimmer()` drive it from
   the field, so the wind's structure reads on the land itself.
-- Script runtime extensions (minimal, additive — no redesign):
+- Script runtime extensions (minimal, additive - no redesign):
   - `Caps.field`: `wind(position, time)` read-only sample (`field.read`
     grant), `params()` live parameter copy, `set(domain, patch)` foundry
     write (matching `field.write.<domain>` grant).
   - `world.spawn` accepts `portal: { targetZone, targetSpawn, radius?,
-    label? }` — scripts spawn/link first-class portals through their
+    label? }` - scripts spawn/link first-class portals through their
     `world` capability.
   - Host-side `ScriptRuntime` methods for the loader: `spawnHost`,
     `hostEntities`, `hostGetTransform`/`hostSetTransform`, `portalLink`;
     `RuntimeOptions.field` lets hosts share one `GlobalField` between
     scripts and zones (default: built from the runtime seed).
-- `test/world.test.ts`: 15 tests — determinism (independent stacks, same
+- `test/world.test.ts`: 15 tests - determinism (independent stacks, same
   seed: identical snapshots, field samples, terrain), seam coherence,
   local-wind derivation law, portal transition (identity/state/events/
   cooldown/dangling links), wind multi-directionality + time variance +
@@ -419,21 +471,21 @@ coherence — the architectural law made mechanical.
   inside. One-line winding correction in `sphere()`; verified numerically
   (face·stored-normal avg +0.99 for sphere, +0.995 for skyDome). Found while
   verifying: `torus()` has the opposite inconsistency (outward winding,
-  inward normals — correct culling, inverted lighting); left untouched for
+  inward normals - correct culling, inverted lighting); left untouched for
   the rendering-closeouts lane.
 
 ### API gaps found (for step 3, First Light)
-- (carried from step 1) spawn can't attach geometry/materials — CLOSED in
+- (carried from step 1) spawn can't attach geometry/materials - CLOSED in
   step 3 via procedural `body` descriptors; behaviors are per-script not
-  per-entity — unchanged (scripts coordinate via events/state);
-  no physics/renderer queries — PARTLY closed via `caps.probe.ground`
-  (terrain sampling); audio one-way — unchanged; no deterministic
-  scheduler — unchanged.
+  per-entity - unchanged (scripts coordinate via events/state);
+  no physics/renderer queries - PARTLY closed via `caps.probe.ground`
+  (terrain sampling); audio one-way - unchanged; no deterministic
+  scheduler - unchanged.
 - (new) Portal entities spawned by scripts are not auto-adopted into the
-  loader's stitched set — CLOSED in step 3 via
+  loader's stitched set - CLOSED in step 3 via
   `ComposedWorld.adoptScriptPortals()`.
 
-## [0.4.0] — V4 step 1 (2026-10-10)
+## [0.4.0] - V4 step 1 (2026-10-10)
 
 ### Rendering closeouts (stretch, parallel lane)
 - `python/xrgen/geometry.py`: geometry-reconstruction prototype
@@ -465,11 +517,11 @@ coherence — the architectural law made mechanical.
   stars are currently invisible. One-line winding fix pending.
 
 Sandboxed scripting runtime: the engine becomes a platform. Game logic is
-written by strangers against ONE frozen capability object — no WebGL, no
+written by strangers against ONE frozen capability object - no WebGL, no
 DOM, no engine internals.
 
 ### Added
-- `src/script/` — the sandboxed execution runtime:
+- `src/script/` - the sandboxed execution runtime:
   - `api.ts`: the capability API. `Caps` is the single object a script ever
     receives: seeded `rng` (mulberry32, mixed per script so script
     determinism matches engine determinism), read-only `time`, `world`
@@ -484,38 +536,38 @@ DOM, no engine internals.
     reserved for step 2's read-only environmental ("wind") field query.
   - `runtime.ts`: `ScriptRuntime` loads defs, builds each a frozen Caps,
     drives them from the main loop, and drains composed audio. Entity
-    handles are sealed closures (no forgeable identity — entity ids live in
+    handles are sealed closures (no forgeable identity - entity ids live in
     an engine-side WeakMap, never on the handle). `MemoryEntityBackend` for
     tests, `SceneEntityBackend` for live scenes. Threat model, stated
     honestly: V4 guarantees capability-closure, not malicious-actor
     containment; full realm isolation is future work.
   - `refScripts.ts`: the C# `ScriptProvider` behaviors ported as reference
-    scripts — `floatScript` (bob+spin, behavioral port of `FloatScript`) and
+    scripts - `floatScript` (bob+spin, behavioral port of `FloatScript`) and
     `arpScript`/`hatsScript` (bit-exact ports of `ScoreComposer`: own
     SplitMix64 via BigInt, C# banker's rounding on the time grid).
-- `test/script.test.ts`: 17 tests — functional (spawn/react/determinism/
+- `test/script.test.ts`: 17 tests - functional (spawn/react/determinism/
   events/state/audio sink/unload), C# parity (composed events vs the
   committed `gen/csharp-score.json`: exact on t/dur/kind/gain, ±0.005 on
   freq across the Math.Pow boundary), graduated grants, and adversarial
   sandbox-boundary tests (frozen graph, no internals reachable, forged
   handles, snapshot isolation, input validation).
-- Demo: 19th pipeline overlay row — `script runtime (sandbox)` — and the
+- Demo: 19th pipeline overlay row - `script runtime (sandbox)` - and the
   `float` reference script driving a visible ember in the live scene.
 
 ### API gaps found (for step 3, First Light)
-- Scripts cannot attach geometry/materials — `spawn` creates transform-only
+- Scripts cannot attach geometry/materials - `spawn` creates transform-only
   entities; visible bodies are host-side. A game needs `world.spawn` with a
   procedural-geometry/material descriptor, or a mesh-authoring capability.
 - No per-entity behavior attachment: behaviors are per-script (one
   update fn), not per-entity. A game wants `handle.onUpdate(fn)` or
   behavior components.
-- No physics/renderer queries through caps (raycasts, colliders, picking) —
+- No physics/renderer queries through caps (raycasts, colliders, picking) -
   input is host-injected events only.
 - Audio is one-way: scripts cannot read playback position or loop phase.
 - No timers/async through caps (deliberate for determinism, but a game will
   want a deterministic scheduler).
 
-## [0.3.0] — V3 (2026-10-10)
+## [0.3.0] - V3 (2026-10-10)
 
 Inverse rendering: distill super-resolved frames into procedural math.
 Two-sided design: the foundry runs once, offline; the runtime keeps zero
@@ -564,7 +616,7 @@ dependencies on NVIDIA, Google Colab, DLSS, or any ML framework.
   only).
 - Neural inverse rendering remains optional future work, not the core path.
 
-## [0.2.0] — V2 (2026-10-10)
+## [0.2.0] - V2 (2026-10-10)
 
 Engine depth: physics core, richer procedural generation.
 
@@ -579,7 +631,7 @@ Engine depth: physics core, richer procedural generation.
 - Demo: ember risers from the gate, falling motes that bounce on the terrain,
   sky dome, rock field. Pipeline overlay labels the new systems.
 
-## [0.1.0] — V1 (2026-10-10)
+## [0.1.0] - V1 (2026-10-10)
 
 First public release. Live demo: https://frozen-in-flames.github.io/polyglot-procedural-engine/
 

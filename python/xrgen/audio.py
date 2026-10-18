@@ -1,9 +1,9 @@
-"""AudioComposer — Python's voice in the engine's polyglot audio.
+"""AudioComposer - Python's voice in the engine's polyglot audio.
 
 Python doesn't render samples here; it *composes*. Given a seed it writes a
 score (chords, melody, bass) in the engine's shared score format, and any
 language's renderer can play it. That split is deliberate: Python owns the
-musical decisions (the ML-flavored part — seeded progressions, probabilistic
+musical decisions (the ML-flavored part - seeded progressions, probabilistic
 melody walks), while sample rendering stays wherever the host is fastest.
 
 Score format (shared with C#, Swift, Kotlin, TypeScript):
@@ -110,8 +110,8 @@ _M64 = (1 << 64) - 1
 
 # Adaptive stream domain-separates from the static composer: same seed,
 # different purpose, different stream. Decisions on this path use only the
-# Rng and integer/rational arithmetic — never rng.normal() and never
-# math.sin/cos — so the decision path stays bit-exact across the
+# Rng and integer/rational arithmetic - never rng.normal() and never
+# math.sin/cos - so the decision path stays bit-exact across the
 # Python/C#/TypeScript mirrors. Frequencies use 2 ** (semis / 12), the
 # same as the static composer.
 _ADAPTIVE_XOR = 0xADA971C

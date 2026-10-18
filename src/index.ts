@@ -48,3 +48,12 @@ export {
 export type { SfxVoiceKind, SfxRenderOpts } from './audio/synth.js';
 export * from './script/index.js';
 export * from './input/index.js';
+export * from './math/sdf.js';
+export { RaymarchRenderer, buildRaymarchFragment, cameraBasis } from './render/raymarch.js';
+export type { RaymarchCamera, RaymarchOpts, RaymarchMaterial } from './render/raymarch.js';
+export { gradientDescent, solveLighting, lightCandidates, fitMaterialCoeffs, solveLightPosition, linearLeastSquares, FD_EPS } from './inverse/solvers.js';
+export type { SolveLog, GdOpts, LightSample, SolvedLight, LightingSolution, MaterialFit, LightPosSolution } from './inverse/solvers.js';
+export { ParamRegistry, CurveParam, mountTuningDeck, TUNING_DECK_CSS } from './ui/tuning.js';
+export type { ParamDef, ParamListener, DeckSection } from './ui/tuning.js';
+export { evalTerm, evalSlider, evalSemantics, SEMANTIC_SLIDERS, blocks, live, stackBlocks, sineWarp, demoWorld, demoUniforms } from './world/semantic.js';
+export type { SemanticTerm, SemanticSlider, Block } from './world/semantic.js';

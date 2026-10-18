@@ -1,4 +1,4 @@
-// script/refScripts.ts — reference scripts proving the runtime path.
+// script/refScripts.ts - reference scripts proving the runtime path.
 //
 // These port the C# ScriptProvider behaviors (dotnet/XrEngine.Providers)
 // through the new sandboxed runtime:

@@ -1,4 +1,4 @@
-// world/index.ts — public surface of the V4 world-composition module.
+// world/index.ts - public surface of the V4 world-composition module.
 export type {
   ZoneDescriptor, PortalDescriptor, Bounds3,
   ZoneWindParams, ZoneTerrainParams, ZoneSkyParams, ZoneBiomeParams,

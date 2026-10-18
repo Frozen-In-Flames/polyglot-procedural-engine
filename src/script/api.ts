@@ -1,4 +1,4 @@
-// script/api.ts — capability-scoped scripting API (V4 step 1).
+// script/api.ts - capability-scoped scripting API (V4 step 1).
 //
 // The engine's platform surface: every game script gets exactly ONE object,
 // the capability object `Caps`, and nothing else. There is no raw WebGL, no
@@ -7,9 +7,9 @@
 //
 // Architectural law (Aries, Oct 10, 2026): "local generation, global
 // coherence". Step 2 (world composition) added the READ-ONLY shared
-// environmental-field query to this API — a seeded global "wind" field that
+// environmental-field query to this API - a seeded global "wind" field that
 // scripted entities sample as (position, time) -> vector, so independently
-// built zones read as one coherent ocean — plus the six per-domain foundry
+// built zones read as one coherent ocean - plus the six per-domain foundry
 // writes (field.write.*). See the `field` namespace on Caps.
 
 /** JSON-shaped values only: the only data that may cross the script boundary. */
@@ -17,7 +17,7 @@ export type JSONValue =
   | null | boolean | number | string
   | JSONValue[] | { [k: string]: JSONValue };
 
-/** Transform snapshot. Plain data, copied in and out — never a live reference. */
+/** Transform snapshot. Plain data, copied in and out - never a live reference. */
 export interface TransformData {
   position: [number, number, number];
   rotation: [number, number, number, number]; // quaternion xyzw
@@ -61,7 +61,7 @@ export interface EntityHandle {
 }
 
 /** Procedural body geometry a script may attach at spawn. Everything is
- *  generated in code — kinds map onto the engine's parametric builders, so
+ *  generated in code - kinds map onto the engine's parametric builders, so
  *  spawned entities are visible with zero asset files. */
 export interface BodyGeometry {
   /** 'sphere' | 'box' | 'cone' | 'torus' | 'octahedron' | 'prism' (cylinder). */
@@ -94,7 +94,7 @@ export interface SpawnBody {
 export interface WorldCaps {
   /** Spawn an entity. Options are plain data. `portal` links the spawned
    *  entity as a first-class portal (step 2); `body` attaches a procedural
-   *  visible body (step 3) — without it the entity is transform-only. */
+   *  visible body (step 3) - without it the entity is transform-only. */
   spawn(name: string, opts?: {
     position?: [number, number, number];
     rotation?: [number, number, number, number];
@@ -130,7 +130,7 @@ export interface AudioCaps {
   /** Schedule many at once. */
   notes(es: NoteEvent[]): void;
   /** Positional one-shot SFX. Schema-validated and range-clamped by the
-   *  host — scripts request, the host places and plays (V8 §5.2). */
+   *  host - scripts request, the host places and plays (V8 §5.2). */
   sfx(spec: SfxSpec): void;
   /** One-way adaptive state push. Merged into the conductor state by the
    *  host, range-clamped. Scripts never read the mix back (V8 §5.2). */
@@ -143,7 +143,7 @@ export type SfxKind = 'pluck' | 'ping' | 'riser' | 'gust';
 /**
  * Positional one-shot SFX request. Crosses the script boundary as plain
  * JSON; the host validates (schema-checked, range-clamped), places, and
- * plays. A hostile script can be annoying; it cannot break the mix —
+ * plays. A hostile script can be annoying; it cannot break the mix -
  * gains clamp, the voice budget holds, the master limiter stands.
  */
 export interface SfxSpec {
@@ -167,7 +167,7 @@ export interface MoodPartial {
 
 /**
  * Environment probe (step 3). Host-registered queries about the composed
- * world that scripts need for embodied play — ground height for walkers,
+ * world that scripts need for embodied play - ground height for walkers,
  * nothing more. Answers are plain numbers, never engine references.
  */
 export interface ProbeCaps {
@@ -229,7 +229,7 @@ export const ALL_CAPABILITIES: readonly CapabilityName[] = Object.freeze([
  * `field` namespace: read-only sampling of the shared seeded global "wind"
  * field for lower tiers (`field.read`), and the six per-domain write
  * controls (`field.write.scene/genesis/biome/tempo/light/presence`) for
- * the endgame foundry tier. New members are additive namespaces — the
+ * the endgame foundry tier. New members are additive namespaces - the
  * existing shape never changes.
  */
 export interface Caps {
@@ -273,7 +273,7 @@ export interface PortalSpawnOpts {
  * The shared environmental ("wind") field namespace (step 2).
  *
  * THE WIND CORRECTION (Aries, Oct 10, 2026): the generative math is
- * inherently unseeable and must NEVER be visualized — not as numbers,
+ * inherently unseeable and must NEVER be visualized - not as numbers,
  * overlays, hints, or highlight effects. This query returns a vector for
  * SIMULATION (advecting embers, leaning grass, clustering motes); what the
  * player sees is always the world's texture, never the field.
@@ -288,7 +288,7 @@ export interface FieldCaps {
   /**
    * The live six-domain parameters (a copy). Requires 'field.read'.
    * Shape: { globalSeed, wind, scene, genesis, biome, tempo, light,
-   * presence } — plain JSON.
+   * presence } - plain JSON.
    */
   params(): JSONValue;
   /**

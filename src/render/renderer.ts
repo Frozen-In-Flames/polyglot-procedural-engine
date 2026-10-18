@@ -1,4 +1,4 @@
-// render/renderer.ts — thin WebGL2 renderer owned by the engine.
+// render/renderer.ts - thin WebGL2 renderer owned by the engine.
 // Implements the Renderer interface; future C++/Vulkan or Swift/Metal
 // backends implement the same draw contract.
 import type { Mat4 } from '../math/mat.js';
@@ -344,8 +344,8 @@ export class Renderer {
     if (w <= 0.001) {
       // Center behind the camera: the clip-space test below would
       // misbehave (w < 0 flips the inequalities). The sphere is still
-      // visible when it reaches the camera — the normal case for a walker
-      // standing inside a large terrain — so cull only when the camera is
+      // visible when it reaches the camera - the normal case for a walker
+      // standing inside a large terrain - so cull only when the camera is
       // strictly outside the sphere.
       const dx = wx - camPos[0], dy = wy - camPos[1], dz = wz - camPos[2];
       return dx * dx + dy * dy + dz * dz <= r * r;

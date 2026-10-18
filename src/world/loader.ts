@@ -1,4 +1,4 @@
-// world/loader.ts — the composed world loader.
+// world/loader.ts - the composed world loader.
 //
 // Takes an array of zone descriptors authored INDEPENDENTLY (plain JSON from
 // different developers), validates each, instantiates zones against ONE
@@ -8,7 +8,7 @@
 // Field continuity across seams is structural, not negotiated: every zone
 // samples the same GlobalField instance, so the wind at a seam point is
 // identical no matter which zone's coordinates you arrive in. Crossing a
-// portal feels like the lake changing — local weights shift (gustScale,
+// portal feels like the lake changing - local weights shift (gustScale,
 // biasWeight, shimmer), the ocean underneath does not.
 //
 // The loader is engine-side (host privilege): it spawns portal entities via
@@ -43,7 +43,7 @@ export class ComposedWorld {
    * Load and stitch zones. Each descriptor is validated; duplicate zone ids
    * are rejected. Portal entities are spawned into the runtime (tag
    * 'portal'); dangling portal links (target zone not loaded) are kept but
-   * never fire — crossPortal refuses silent teleports.
+   * never fire - crossPortal refuses silent teleports.
    */
   loadZones(descriptors: unknown[]): Zone[] {
     // loadZoneDescriptors validates each descriptor (a bad one fails the
@@ -105,7 +105,7 @@ export class ComposedWorld {
   /** Drive portal crossings for one frame. Returns crossings this frame. */
   update(_dt: number, t: number): PortalCrossing[] {
     // Zones re-derive lazily on field revision changes (sync() in localWind
-    // etc.), but portal mouths follow zone placement which is static — no
+    // etc.), but portal mouths follow zone placement which is static - no
     // per-frame zone work needed here beyond the handoff.
     this.adoptScriptPortals();
     return this.handoff.update(this.rt, this.portals, this.zones, t);
@@ -114,7 +114,7 @@ export class ComposedWorld {
   /**
    * Adopt portals spawned by SCRIPTS (step-3 API fix). A script links a
    * portal through its `world` capability; the link lands on the entity
-   * record, but the loader's stitched set never saw it — so the handoff
+   * record, but the loader's stitched set never saw it - so the handoff
    * ignored script-spawned portals entirely. This scan picks up every live
    * entity tagged 'portal' carrying a link and stitches it in, bound to
    * the nearest zone (mouth coordinates are re-expressed zone-local so the
@@ -160,7 +160,7 @@ export class ComposedWorld {
 
   /**
    * Seam continuity probe: sample the GLOBAL field at the same world point
-   * through two different zones. Must be bit-identical — this is the
+   * through two different zones. Must be bit-identical - this is the
    * multi-developer coherence guarantee made testable.
    */
   seamSample(zoneA: string, zoneB: string, worldPoint: Vec3JSON, t: number): {

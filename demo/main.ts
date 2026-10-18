@@ -1,4 +1,4 @@
-// demo/main.ts — "First Light": the zero-asset proof scene.
+// demo/main.ts - "First Light": the zero-asset proof scene.
 // Every visual and sound is generated in code. The HUD pipeline list names
 // the language behind each system, so the cooperation is visible.
 import {
@@ -47,7 +47,7 @@ function setStatus(msg: string): void {
 async function wasmFactory(): Promise<(() => Promise<unknown>) | undefined> {
   try {
     // Absolute URL built at runtime (bundlers leave it alone), resolved
-    // against the page — not the bundle in assets/ — so it works on
+    // against the page - not the bundle in assets/ - so it works on
     // http(s), file://, and subpath hosting alike.
     const genUrl = new URL('gen/' + 'gen.js', document.baseURI).href;
     const m = await import(/* @vite-ignore */ genUrl);
@@ -302,7 +302,7 @@ async function main(): Promise<void> {
 
   // ---- Sandboxed scripting runtime (V4 step 1) ----
   // The float reference script (ported from the C# FloatScript) spawns and
-  // animates an ember through its capability object only — it never sees
+  // animates an ember through its capability object only - it never sees
   // the SceneNode, renderer, or DOM. The host gives the spawned node a
   // visible body and forwards pointer input as script events.
   const scripts = new ScriptRuntime(20261010, new SceneEntityBackend(root));

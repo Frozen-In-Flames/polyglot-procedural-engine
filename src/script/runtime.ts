@@ -1,4 +1,4 @@
-// script/runtime.ts — the sandboxed execution runtime.
+// script/runtime.ts - the sandboxed execution runtime.
 //
 // Loads script definitions, hands each a FROZEN capability object, and drives
 // them from the engine's main loop. Scripts never see the scene graph, the
@@ -160,7 +160,7 @@ export interface RuntimeOptions {
   probe?: (x: number, z: number) => number;
   /**
    * The shared environmental field (step 2). When omitted, the runtime owns
-   * one built from the runtime seed — every script's `field` namespace then
+   * one built from the runtime seed - every script's `field` namespace then
    * samples the same global wind. Hosts composing a world pass their
    * GlobalField here so scripts and zones share one ocean.
    */
@@ -173,7 +173,7 @@ export class ScriptRuntime {
   private entities = new Map<number, EntityRecord>();
   // Engine-side handle -> record link. Authority flows ONLY through this
   // WeakMap: no capability function accepts a raw entity id, so exposing
-  // `id` on the handle (per the EntityHandle interface — scripts need
+  // `id` on the handle (per the EntityHandle interface - scripts need
   // per-entity identity for phases, cooldowns, etc.) cannot forge authority
   // over an entity the script was never given (no confused-deputy destroy
   // via a guessed id: recordFor() simply won't resolve a foreign object).
@@ -492,7 +492,7 @@ export class ScriptRuntime {
         if (!Array.isArray(es)) throw new Error('script: notes needs an array');
         for (const e of es) (audio as AudioCaps).note(e);
       },
-      // V8 §5.2: positional one-shot request — validated, range-clamped;
+      // V8 §5.2: positional one-shot request - validated, range-clamped;
       // the host places and plays. Scripts compose/request, never touch nodes.
       sfx(spec: SfxSpec): void {
         require('audio');
@@ -500,7 +500,7 @@ export class ScriptRuntime {
           kind: string; pos: unknown; gain: number; seed?: number; freq?: number;
         }) as SfxSpec);
       },
-      // V8 §5.2: one-way adaptive state push — merged by the host, clamped.
+      // V8 §5.2: one-way adaptive state push - merged by the host, clamped.
       mood(partial: MoodPartial): void {
         require('audio');
         const clean = sanitizeMood(partial as unknown as {

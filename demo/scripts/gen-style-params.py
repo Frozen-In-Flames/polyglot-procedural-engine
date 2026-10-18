@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the Python ML style parameters consumed by the First Light demo.
 
-Runs the REAL provider (python/xrgen) — not a stub — and writes the seeded
+Runs the REAL provider (python/xrgen) - not a stub - and writes the seeded
 MLP weights to demo/public/gen/python-style.json. The demo loads them at
 runtime and applies the style over the C++-generated terrain heights, so
 what you see on screen is Python's math shaping C++'s math.

@@ -1,4 +1,4 @@
-// state/types.ts — shared types for the distributed state graph (V5 step 2).
+// state/types.ts - shared types for the distributed state graph (V5 step 2).
 //
 // Every build action a player takes inside a session (brush stroke, rhythm
 // tuning, seed planting, script edit) becomes one BuildOp in a per-actor

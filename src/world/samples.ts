@@ -1,9 +1,9 @@
-// world/samples.ts — sample zone descriptors authored as independent
+// world/samples.ts - sample zone descriptors authored as independent
 // developers would: plain JSON, no engine internals.
 //
 // All three share nothing but the global seed (set on the GlobalField at
-// load time). Their local character differs — gust weights, shimmer, biome,
-// terrain bones — but every wind sample derives from the same global field,
+// load time). Their local character differs - gust weights, shimmer, biome,
+// terrain bones - but every wind sample derives from the same global field,
 // so crossing a portal reads as the lake changing, not a loading screen
 // into randomness.
 //
@@ -24,7 +24,7 @@ export const SAMPLE_ZONE_EMBER_REACH: ZoneDescriptor = {
   },
   sky: { horizonHue: 0.06, zenithHue: 0.62, starDensity: 0.25 },
   biome: { name: 'ashen', moteDensity: 0.7, emberDrift: 1.35 },
-  // Restless air: gusts amplified, weak prevailing bias — the wind feels
+  // Restless air: gusts amplified, weak prevailing bias - the wind feels
   // gusty and changeable here. Strong terrain shimmer.
   wind: { biasWeight: 0.2, gustScale: 1.35, shimmerStrength: 1.2 },
   portals: [
@@ -51,7 +51,7 @@ export const SAMPLE_ZONE_MOTE_HOLLOW: ZoneDescriptor = {
   },
   sky: { horizonHue: 0.13, zenithHue: 0.58, starDensity: 0.55 },
   biome: { name: 'hollow', moteDensity: 0.9, emberDrift: 0.7 },
-  // Sheltered air: the anchored prevailing wind dominates, gusts damped —
+  // Sheltered air: the anchored prevailing wind dominates, gusts damped -
   // motes hang and drift in slow sheets. Gentle shimmer.
   wind: { biasWeight: 0.65, gustScale: 0.7, shimmerStrength: 0.5 },
   portals: [
@@ -86,8 +86,8 @@ export const SAMPLE_ZONE_SHIMMER_FLATS: ZoneDescriptor = {
   },
   sky: { horizonHue: 0.5, zenithHue: 0.66, starDensity: 0.1 },
   biome: { name: 'flats', moteDensity: 0.35, emberDrift: 1.0 },
-  // Open water: near-unity weights — the global ocean reads almost raw
-  // here — with the strongest terrain shimmer, so the wind's structure is
+  // Open water: near-unity weights - the global ocean reads almost raw
+  // here - with the strongest terrain shimmer, so the wind's structure is
   // legible in the ground itself.
   wind: { biasWeight: 0.35, gustScale: 1.0, shimmerStrength: 1.8 },
   portals: [

@@ -1,4 +1,4 @@
-// build/brush.ts — the field brush: bend the local wind.
+// build/brush.ts - the field brush: bend the local wind.
 //
 // A brush is a PURE function of (seed, params): same seed + same params =
 // identical offsets, forever, on every node. The offset layers over the
@@ -17,9 +17,9 @@ import type { WindSample } from '../world/wind.js';
 export interface BrushOpts {
   /** xz heading the brush bends the wind toward (need not be unit length). */
   direction: [number, number];
-  /** 0..1 — how hard the brush bends the local wind. */
+  /** 0..1 - how hard the brush bends the local wind. */
   force: number;
-  /** 0..1 — extra local gustiness inside the brush. */
+  /** 0..1 - extra local gustiness inside the brush. */
   gust: number;
   /** Replay key. When omitted the session derives one from (seed, brush id). */
   seed?: number;
@@ -31,7 +31,7 @@ export interface BrushDef {
   cx: number;
   cz: number;
   radius: number;
-  /** radians — the heading the brush conducts. */
+  /** radians - the heading the brush conducts. */
   heading: number;
   force: number;
   gust: number;

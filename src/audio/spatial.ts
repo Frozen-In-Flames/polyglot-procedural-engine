@@ -1,4 +1,4 @@
-// audio/spatial.ts — WebAudio spatial graph, synthesized SFX (no audio files),
+// audio/spatial.ts - WebAudio spatial graph, synthesized SFX (no audio files),
 // and the seam for the procedural music engine (pmve).
 //
 // V8 extensions (additive): emitter registry (voices bound to entities),
@@ -98,7 +98,7 @@ export interface VoiceSpec {
 export interface ReverbZoneSpec {
   center: Vec3;
   radius: number;  // world units, > 0
-  seed: number;    // IR seed — generated once per seed, convolved forever
+  seed: number;    // IR seed - generated once per seed, convolved forever
   decay: number;   // exponential decay rate per second, > 0
   damping: number; // progressive lowpass damping 0..1
   wet: number;     // zone return wet mix 0..1
@@ -242,7 +242,7 @@ export class SpatialAudio {
 
   // ------------------------------------------------------------------
   // V8: emitter registry (§3.1). Emitters bind a voice to an entity; the
-  // host moves them per frame. Created/destroyed through the host API —
+  // host moves them per frame. Created/destroyed through the host API -
   // scripts request via caps.audio.sfx, the host places.
   // ------------------------------------------------------------------
 
@@ -367,7 +367,7 @@ export class SpatialAudio {
 
   // ------------------------------------------------------------------
   // V8: reverb zones (§3.2). Zones carry a reverb seed; the IR is generated
-  // once per seed via synth.renderIR and cached — generating once,
+  // once per seed via synth.renderIR and cached - generating once,
   // convolving forever. Zone boundaries crossfade over ~0.5 s.
   // ------------------------------------------------------------------
 
@@ -430,7 +430,7 @@ export class SpatialAudio {
 
   // ------------------------------------------------------------------
   // V8: occlusion (§3.3). The raycast is supplied by the host (the engine's
-  // existing colliders) — no new physics, no new deps.
+  // existing colliders) - no new physics, no new deps.
   // ------------------------------------------------------------------
 
   /**
@@ -444,7 +444,7 @@ export class SpatialAudio {
   }
 
   /**
-   * Per-frame: apply occlusion to every emitter — lowpass 20 kHz → ~400 Hz
+   * Per-frame: apply occlusion to every emitter - lowpass 20 kHz → ~400 Hz
    * plus a gain dip. Walls muffle.
    */
   applyOcclusion(listenerPos: Vec3, raycast: RaycastFn): void {

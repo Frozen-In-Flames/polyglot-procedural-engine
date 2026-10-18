@@ -1,4 +1,4 @@
-// world/wind.ts — the shared global seeded procedural vector field.
+// world/wind.ts - the shared global seeded procedural vector field.
 //
 // THE WIND, mathematically. One global field for the whole composed world,
 // deterministic from a single seed. It is NEVER one direction: four layered
@@ -9,26 +9,26 @@
 //   W(p, t) = gain * Σ_k  env_k(p) * gust_k(p, t) * dir_k(p, t)   (+ player wake)
 //
 //   env_k(p)  = A_k * (0.45 + 0.55 * fbm2(p.xz * κk/2, envSeed_k))
-//               — force varies across subsections of the world
+//               - force varies across subsections of the world
 //   θ_k(p,t)  = κk * (u_k · p) + ωk * t + φk
-//               — heading rotates across space (wavelength λk = 2π/κk) and
+//               - heading rotates across space (wavelength λk = 2π/κk) and
 //                 drifts in time; different axes u_k per layer, so the wind
 //                 is multi-directional at every point
 //   gust_k    = 1 + gustStrength * sin(2θ_k + κk * (v_k · p))
-//               — v_k perpendicular to u_k: gusts arrive crosswise to the
+//               - v_k perpendicular to u_k: gusts arrive crosswise to the
 //                 local heading, like chop on a lake
 //   dir_k     = u_k * cos θ_k + w_k * sin θ_k,  y += 0.35 * sin(θ_k + π/2)
-//               — u_k, w_k an orthonormal horizontal pair; the y term is the
+//               - u_k, w_k an orthonormal horizontal pair; the y term is the
 //                 field's vertical breathing
 //
 // Everything seeded: λk ∈ {14, 22, 34, 52}, ωk ∈ {0.05, 0.11, 0.19, 0.31},
-// axes, amplitudes, phases, envelope seeds — all drawn from mulberry32
+// axes, amplitudes, phases, envelope seeds - all drawn from mulberry32
 // mixed with the global seed. Same seed → identical field, forever.
 //
 // THE WIND CORRECTION (Aries, Oct 10, 2026): the wind itself is never
 // visualized. Scripts may SAMPLE it (position, time) -> vector through the
 // read-only `field.wind` capability, and the world carries its structure in
-// texture — terrain shimmer, ember lean, mote clustering — but no overlay,
+// texture - terrain shimmer, ember lean, mote clustering - but no overlay,
 // no number, no highlight ever renders the field directly.
 
 import { mulberry32, fbm2 } from '../geo/rng.js';
@@ -54,7 +54,7 @@ interface WindLayer {
 export interface PlayerState {
   position: [number, number, number];
   speed: number;   // world units / second
-  rhythm: number;  // 0..1 — the learned cycle phase the player is moving on
+  rhythm: number;  // 0..1 - the learned cycle phase the player is moving on
 }
 
 const WAVELENGTHS = [14, 22, 34, 52];
@@ -140,7 +140,7 @@ export class WindField {
       const cross = L.wx * x + L.wz * z;
       const theta = L.kappa * s + L.omega * t + L.phase;
       // Spatially varying force: the envelope makes some subsections push
-      // hard while others drift — never uniform across the world.
+      // hard while others drift - never uniform across the world.
       const env = L.amp * (0.45 + 0.55 * fbm2(
         x * L.kappa * 0.5, z * L.kappa * 0.5, L.envSeed));
       const gust = 1 + gustStrength * Math.sin(2 * theta + L.kappa * cross);

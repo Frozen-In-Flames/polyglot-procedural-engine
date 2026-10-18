@@ -1,11 +1,11 @@
 // Unit tests for V5 step 2: distributed state graph (runs in node).
-// (a) convergence — two nodes receiving the same 50 ops in different orders
-//     reach identical stateHash; (b) idempotency — duplicate delivery is
-//     harmless; (c) conflict resolution — same-target ops resolve
-//     deterministically (same winner on both nodes); (d) snapshots —
-//     restore + tail replay converges with full replay; (e) tamper evidence —
+// (a) convergence - two nodes receiving the same 50 ops in different orders
+//     reach identical stateHash; (b) idempotency - duplicate delivery is
+//     harmless; (c) conflict resolution - same-target ops resolve
+//     deterministically (same winner on both nodes); (d) snapshots -
+//     restore + tail replay converges with full replay; (e) tamper evidence -
 //     a forged prev is rejected, and a tampered payload breaks the chain at
-//     the next op; (f) rejection rules — unknown ops and foreign seeds.
+//     the next op; (f) rejection rules - unknown ops and foreign seeds.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {

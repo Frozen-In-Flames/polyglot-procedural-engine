@@ -1,9 +1,9 @@
-// script/bodies.ts — engine-side construction of spawned bodies.
+// script/bodies.ts - engine-side construction of spawned bodies.
 //
 // A SpawnBody is a script-authored DESCRIPTOR (plain JSON, validated at the
 // boundary). This module turns it into a real Geometry + Material on the
 // engine side of the wall. Scripts never touch builders, geometries, or
-// materials directly — they only describe what they want spawned.
+// materials directly - they only describe what they want spawned.
 //
 // Everything here is procedural: parametric surfaces and explicit triangle
 // lists. Zero asset files, per the engine's standing law.

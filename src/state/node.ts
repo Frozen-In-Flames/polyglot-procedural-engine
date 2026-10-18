@@ -1,4 +1,4 @@
-// state/node.ts — one participant in the distributed state graph (V5 step 2).
+// state/node.ts - one participant in the distributed state graph (V5 step 2).
 //
 // A StateNode authors ops (local()), ingests remote ops (merge()), and keeps
 // the reduced WorldState. Ingest is fully deterministic: structural check,

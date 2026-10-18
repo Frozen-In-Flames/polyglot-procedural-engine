@@ -1,4 +1,4 @@
-// bridge/wasm.ts — loads the C++ procedural core as WebAssembly and exposes
+// bridge/wasm.ts - loads the C++ procedural core as WebAssembly and exposes
 // it through the GenCore interface. Falls back to the TypeScript noise when
 // WASM is unavailable, and says so honestly via languageTag.
 import type { GenCore } from './providers.js';

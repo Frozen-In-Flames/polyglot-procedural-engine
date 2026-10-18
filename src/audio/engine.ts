@@ -1,4 +1,4 @@
-// audio/engine.ts — the host AudioEngine (V8 §5.1).
+// audio/engine.ts - the host AudioEngine (V8 §5.1).
 //
 // Owns the AudioContext, the mix graph, the spatial graph, and the
 // conductor, and wires them together:
@@ -60,7 +60,7 @@ export class AudioEngine {
     this.ctx = opts.ctx ?? new AC!();
     this.graph = new MixGraph(this.ctx);
     this.conductor = new Conductor(this.ctx, this.graph, opts.layers ?? {}, opts.bpm ?? 96);
-    // The spatial graph routes through the mix graph's sfx bus — named
+    // The spatial graph routes through the mix graph's sfx bus - named
     // buses, never straight to destination.
     this.spatial = new SpatialAudio(this.conductor.asMusicDriver(), this.ctx);
     this.spatial.setOutput(this.graph.bus('sfx'));
@@ -173,7 +173,7 @@ export class AudioEngine {
     }
     // Notes: composed score events join the song layer as a one-bar loop
     // when the conductor has no song score loaded; otherwise they are
-    // dropped (the conductor owns the arrangement — scripts request SFX,
+    // dropped (the conductor owns the arrangement - scripts request SFX,
     // they do not conduct). Drained regardless so the sink never grows.
     const notes = rt.drainAudio();
     void notes;

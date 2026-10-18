@@ -1,20 +1,20 @@
-"""MlGenerationProvider — the ML-flavored half of procedural generation.
+"""MlGenerationProvider - the ML-flavored half of procedural generation.
 
 This is where Python earns its place in the engine: not scripting, not
 glue, but the learned-function side of content generation.
 
-  * heightfield / noise — same contract as the C++ GenCore (values in
+  * heightfield / noise - same contract as the C++ GenCore (values in
     [0,1], pure functions of seed), so either backend can feed a mesh.
-  * latent(seed, dim) — deterministic latent vectors, the way a generative
+  * latent(seed, dim) - deterministic latent vectors, the way a generative
     model samples its latent space. Drives variation (placement, hue,
     behavior) from one seed.
-  * make_style_weights / stylize_forward — a tiny seeded MLP (3 -> 6 -> 1)
+  * make_style_weights / stylize_forward - a tiny seeded MLP (3 -> 6 -> 1)
     used as a *style transfer* over a heightfield. The weights are the
     "learned parameters"; the forward pass is the model. The TypeScript
     host mirrors the forward pass exactly (see src/bridge/python.ts), so
     Python trains/generates the parameters and every other language can
     evaluate them.
-  * biome_weights — softmax over seeded logits: mixture weights, the same
+  * biome_weights - softmax over seeded logits: mixture weights, the same
     math an ML classifier outputs.
 
 Everything is stdlib-only and deterministic: same seed, same output,
@@ -74,7 +74,7 @@ def make_style_weights(style_seed: int) -> dict:
     """Generate the seeded parameters of the style MLP.
 
     Xavier-scaled uniforms: the same initialization ML training starts
-    from, except here the seed *is* the training — the parameters are
+    from, except here the seed *is* the training - the parameters are
     used directly as a style function.
     """
     rng = Rng(style_seed ^ 0x9E3779B9)
@@ -96,7 +96,7 @@ def make_style_weights(style_seed: int) -> dict:
 def stylize_forward(x: List[float], w: dict) -> float:
     """One forward pass of the style MLP. x = [height, u, v], out in [0,1].
 
-    Mirrored exactly by TsMlProvider.stylizeForward in src/bridge/python.ts —
+    Mirrored exactly by TsMlProvider.stylizeForward in src/bridge/python.ts -
     any change here must change there too (test/test_ml.py cross-checks
     via the bridge, and test/python-mirror checks the TS side).
     """
@@ -132,7 +132,7 @@ def stylize_field(
 
 
 def biome_weights(seed: int, n: int) -> List[float]:
-    """Softmax over seeded logits — mixture weights, classifier-style."""
+    """Softmax over seeded logits - mixture weights, classifier-style."""
     rng = Rng(seed ^ 0x51ED)
     logits = [rng.normal() for _ in range(n)]
     m = max(logits)

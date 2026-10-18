@@ -1,4 +1,4 @@
-"""Deterministic seeded RNG. SplitMix64 — stable across runs and platforms,
+"""Deterministic seeded RNG. SplitMix64 - stable across runs and platforms,
 so a seed means the same stream whether this runs here, embedded in C++,
 or mirrored in TypeScript."""
 import math

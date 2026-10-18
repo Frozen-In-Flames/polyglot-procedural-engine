@@ -1,4 +1,4 @@
-// input/schemes.ts — desktop, touch, and XR input schemes.
+// input/schemes.ts - desktop, touch, and XR input schemes.
 // Each scheme accumulates raw input events (fed by DOM handlers in the demo)
 // and drives the shared CameraRig on poll(). DOM-free; unit-testable in node.
 import { CameraRig, ZERO_INTENT, type MoveIntent, type RigMode } from './rig.js';

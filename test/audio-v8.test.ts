@@ -1,16 +1,16 @@
-// Tests for V8 ("the engine gets ears") — docs/V8-AUDIO.md §7.1, TypeScript slice.
+// Tests for V8 ("the engine gets ears") - docs/V8-AUDIO.md §7.1, TypeScript slice.
 //
 // The V8 implementations land in parallel with these tests, so every module
 // is imported through the contract-loading harness below: the specifier is a
 // runtime string (never a literal), which keeps `tsc` (the `pretest` step)
 // green while implementations land, and turns each missing or mismatched
-// interface into a NAMED, PRECISE test failure — expected vs. actual —
+// interface into a NAMED, PRECISE test failure - expected vs. actual -
 // instead of breaking the whole suite's compilation. Do NOT "fix" these
 // tests by renaming what they import: the spec (docs/V8-AUDIO.md) is the
 // contract; fix the implementation.
 //
 // Conventions: node:test + node:assert/strict, like the existing suite.
-// The conductor tests are pure functions — no AudioContext needed (§4.4).
+// The conductor tests are pure functions - no AudioContext needed (§4.4).
 // The acceptance test is deaf: it asserts on the conductor's layer/tuning
 // state, never by listening (§7.1).
 
@@ -50,9 +50,9 @@ function load(specifier: string, contract: string): Promise<Loaded> {
 function needMod(l: Loaded): any {
   if (!l.ok) {
     throw new Error(
-      `V8 contract unmet — ${l.contract}: cannot import '${l.specifier}' ` +
+      `V8 contract unmet - ${l.contract}: cannot import '${l.specifier}' ` +
         `(${l.cause}). The implementation has not landed yet; see docs/V8-AUDIO.md. ` +
-        `Do not rename the test import — implement the spec'd module.`,
+        `Do not rename the test import - implement the spec'd module.`,
     );
   }
   return l.mod;
@@ -64,8 +64,8 @@ function needExport(mod: any, specifier: string, name: string, contract: string)
   if (v === undefined) {
     const found = Object.keys(mod).filter((k) => !k.startsWith('_')).join(', ') || '(no exports)';
     throw new Error(
-      `V8 contract unmet — ${contract}: '${specifier}' does not export '${name}'. ` +
-        `Exports found: ${found}. Expected per the spec; do not rename the test — fix the implementation.`,
+      `V8 contract unmet - ${contract}: '${specifier}' does not export '${name}'. ` +
+        `Exports found: ${found}. Expected per the spec; do not rename the test - fix the implementation.`,
     );
   }
   return v;
@@ -106,7 +106,7 @@ function state(partial: Partial<ConductorState>): ConductorState {
 }
 
 /* ------------------------------------------------------------------ */
-/* Score schema v1.1 — src/audio/driver.ts (docs/V8-AUDIO.md §5.4)      */
+/* Score schema v1.1 - src/audio/driver.ts (docs/V8-AUDIO.md §5.4)      */
 /* ------------------------------------------------------------------ */
 
 const NEW_KINDS = ['pluck', 'ping', 'riser', 'gust', 'granular'] as const;
@@ -197,7 +197,7 @@ test('schema v1.1: old documents validate unchanged', async () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* SplitMix64 determinism — src/script/refScripts.ts (the engine's TS  */
+/* SplitMix64 determinism - src/script/refScripts.ts (the engine's TS  */
 /* SplitMix64; docs/V8-AUDIO.md §2 "the single RNG everywhere")         */
 /* ------------------------------------------------------------------ */
 
@@ -234,7 +234,7 @@ test('SplitMix64: golden regression vector (seed 0)', async () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* The conductor — src/audio/score.ts (docs/V8-AUDIO.md §4)             */
+/* The conductor - src/audio/score.ts (docs/V8-AUDIO.md §4)             */
 /* Pure functions; no AudioContext needed (§4.4).                      */
 /* ------------------------------------------------------------------ */
 
@@ -275,7 +275,7 @@ test('conductor: thresholds stay in sync with the game level-ups', async () => {
   assert.deepEqual(
     [...ATTUNE_THRESHOLDS],
     [...game.ATTUNE_LEVELS],
-    "conductor ATTUNE_THRESHOLDS must deep-equal the game's ATTUNE_LEVELS — " +
+    "conductor ATTUNE_THRESHOLDS must deep-equal the game's ATTUNE_LEVELS - " +
       'the heard attunement levels must stay in sync with the game level-ups',
   );
 });
@@ -390,10 +390,10 @@ test('conductor: justLattice returns the 8-ratio lattice within 1e-9', async () 
 
 test('ACCEPTANCE (deaf): scripted First Light playthrough to resonance', async () => {
   // A playthrough that learns the wind: attunement climbs through every
-  // threshold to level 6. Asserted on the conductor's layer/tuning state —
+  // threshold to level 6. Asserted on the conductor's layer/tuning state -
   // the test is deaf, the demo is not (docs/V8-AUDIO.md §7.1).
   const { attunementLevel, layerGains, resonanceActive, justLattice } = await conductor();
-  const GATE_ROOT = 110; // A2 — the engine's tonal home
+  const GATE_ROOT = 110; // A2 - the engine's tonal home
   const trajectory = [0, 5, 11, 12, 20, 27, 28, 36, 43, 44, 52, 59, 60, 67, 73, 74, 80, 87, 88, 94, 100];
   const levels = trajectory.map(attunementLevel);
   assert.deepEqual(levels.slice(0, 3), [0, 0, 0], 'starts unheard');
@@ -420,7 +420,7 @@ test('ACCEPTANCE (deaf): scripted First Light playthrough to resonance', async (
 });
 
 /* ------------------------------------------------------------------ */
-/* Reverb-zone IR determinism — src/audio/synth.ts                     */
+/* Reverb-zone IR determinism - src/audio/synth.ts                     */
 /* renderIR(seed, lenSec, sampleRate, decay, damping): Float32Array     */
 /* (docs/V8-AUDIO.md §1.1, §2.6, §3.2)                                 */
 /* ------------------------------------------------------------------ */
@@ -455,7 +455,7 @@ test('renderIR: honors duration; differs by seed', async () => {
   assert.equal(ir.length, Math.round(1.5 * 48000), 'length = lenSec * sampleRate');
   const other = renderIR(8, 1.5, 48000, 2.0, 0.4);
   assert.ok(ir.some((v, i) => v !== other[i]), 'IR varies with seed');
-  // Sample-rate independence (§9 Q6): content is defined in seconds —
+  // Sample-rate independence (§9 Q6): content is defined in seconds -
   // the same lenSec at another rate has the same duration in seconds.
   const ir44 = renderIR(7, 1.5, 44100, 2.0, 0.4);
   assert.equal(ir44.length, Math.round(1.5 * 44100));
@@ -466,14 +466,14 @@ test('renderIR: honors duration; differs by seed', async () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Occlusion math — src/audio/spatial.ts (docs/V8-AUDIO.md §3.3)       */
+/* Occlusion math - src/audio/spatial.ts (docs/V8-AUDIO.md §3.3)       */
 /* A ray against the world colliders yields a factor in [0,1];         */
 /* walls muffle: 20 kHz open → ~400 Hz fully occluded.                  */
 /* ------------------------------------------------------------------ */
 
 test('occlusionFactor: in [0,1], monotonic in the host raycast answer', async () => {
   // The real interface (src/audio/spatial.ts): a SpatialAudio method taking
-  // the host's raycast answer — 0 = open air, 1 = fully blocked (§3.3).
+  // the host's raycast answer - 0 = open air, 1 = fully blocked (§3.3).
   // It is pure (uses no instance state), so it is exercised via the
   // prototype without an AudioContext. "Monotonic in wall count" from the
   // brief is covered by driving the stub with increasing blockage.
@@ -482,7 +482,7 @@ test('occlusionFactor: in [0,1], monotonic in the host raycast answer', async ()
   const occlusionFactor = SpatialAudio.prototype.occlusionFactor;
   if (typeof occlusionFactor !== 'function') {
     throw new Error(
-      `V8 contract unmet — occlusion (docs/V8-AUDIO.md §3.3): ` +
+      `V8 contract unmet - occlusion (docs/V8-AUDIO.md §3.3): ` +
         `'SpatialAudio' has no 'occlusionFactor' method.`,
     );
   }
@@ -504,14 +504,14 @@ test('occlusionFactor: in [0,1], monotonic in the host raycast answer', async ()
 });
 
 /* ------------------------------------------------------------------ */
-/* Voice-budget stealing — src/audio/spatial.ts (docs/V8-AUDIO.md §3.1)*/
+/* Voice-budget stealing - src/audio/spatial.ts (docs/V8-AUDIO.md §3.1)*/
 /* 32 concurrent voices, priority-stealed by (loudness × proximity).    */
 /*                                                                     */
 /* Interface assumption (spec-derived, documented): spatial.ts exports */
 /* DEFAULT_VOICE_BUDGET (= 32) and stealOrder(voices) → indices ordered */
 /* lowest-priority-first, priority = loudness × proximity. If the       */
 /* implementation exposes this behavior under different names, the     */
-/* failure below states the expected contract — adjudicate the name,   */
+/* failure below states the expected contract - adjudicate the name,   */
 /* do not silently adapt the test.                                     */
 /* ------------------------------------------------------------------ */
 
@@ -519,7 +519,7 @@ test('voice budget: 32 voices default, steals lowest (loudness × proximity) fir
   // The real interface (src/audio/spatial.ts §3.1): SpatialAudio carries a
   // 32-voice budget (tunable via setVoiceBudget); playOneShot steals the
   // lowest-priority active voice when over budget. The AudioContext is
-  // stubbed — the stealing logic is what this test pins.
+  // stubbed - the stealing logic is what this test pins.
   const mod = needMod(await load(SPATIAL, 'voice budget (docs/V8-AUDIO.md §3.1)'));
   const SpatialAudio = needExport(mod, SPATIAL, 'SpatialAudio', 'voice budget §3.1');
 
@@ -618,7 +618,7 @@ interface CrossVector {
  * Pairs the TS mirror voices against the C++ DSP core exports they mirror.
  * Bounds are the implementation's documented per-function bounds
  * (src/audio/synth.ts header); the spec's §2.6 ceiling (≤1 ulp) is NOT met
- * by modalBank (≤3) and renderIR (≤2) — flagged for adjudication in the
+ * by modalBank (≤3) and renderIR (≤2) - flagged for adjudication in the
  * handoff, but this test asserts the documented bounds per the brief.
  */
 const CROSS_VECTORS: CrossVector[] = [
@@ -687,7 +687,7 @@ test('synth.ts vs C++ reference: within documented ulp bounds', async (t) => {
     const tsFn = needExport(smod, SYNTH, v.tsFn, `TS mirror of ${v.wasmExport} (§2.6)`);
     if (typeof mod[v.wasmExport] !== 'function') {
       throw new Error(
-        `V8 contract unmet — C++ DSP core (docs/V8-AUDIO.md §1.2): WASM module lacks ` +
+        `V8 contract unmet - C++ DSP core (docs/V8-AUDIO.md §1.2): WASM module lacks ` +
           `KEEPALIVE export '${v.wasmExport}'. Rebuild with native/gen/dsp/ via native/build-wasm.sh.`,
       );
     }

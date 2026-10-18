@@ -1,4 +1,4 @@
-// audio/score.ts — the conductor (V8 §4).
+// audio/score.ts - the conductor (V8 §4).
 //
 // The engine does not loop a track; it performs one, continuously, from the
 // game state. A small language-agnostic state vector drives per-language
@@ -7,14 +7,14 @@
 //
 // In First Light the hidden attunement score is HEARD: six levels add
 // layers until resonance retunes every voice to a just-intonation lattice
-// on the gate's root. Felt before understood — the game never names it.
+// on the gate's root. Felt before understood - the game never names it.
 
 import { ScorePlayer } from './driver.js';
 import { MixGraph } from './graph.js';
 import type { MusicDriver } from './spatial.js';
 
 /** The game-state vector (§4.1). Games write into it through the caps
- *  (audio.mood); the engine never requires it — defaults preserve today's
+ *  (audio.mood); the engine never requires it - defaults preserve today's
  *  static behavior for existing scenes. */
 export interface ConductorState {
   energy: number;     // [0,1] scene intensity
@@ -25,7 +25,7 @@ export interface ConductorState {
 }
 
 /** Attunement thresholds: six levels; the gate opens only at level 6.
- *  Mirrors First Light's ATTUNE_LEVELS (games/first-light/shared.ts) — the
+ *  Mirrors First Light's ATTUNE_LEVELS (games/first-light/shared.ts) - the
  *  heard levels must sync with the game's level-ups, so this is the game's
  *  table, not the design doc's. Other games pass custom thresholds to the
  *  Conductor constructor. */
@@ -87,7 +87,7 @@ export function motionDensity(state: ConductorState): number {
   return smoothstep(0.4, 1.0, state.energy);
 }
 
-/** Resonance: attunement at the top threshold — every layer retunes to the
+/** Resonance: attunement at the top threshold - every layer retunes to the
  *  lattice. True iff attunement >= 88 (the last entry of ATTUNE_THRESHOLDS). */
 export function resonanceActive(state: ConductorState): boolean {
   return state.attunement >= ATTUNE_THRESHOLDS[ATTUNE_THRESHOLDS.length - 1];
@@ -112,7 +112,7 @@ export interface ConductorOpts {
   bpm?: number;
   /**
    * Custom attunement thresholds (ascending). Defaults to ATTUNE_THRESHOLDS,
-   * which mirrors First Light's ATTUNE_LEVELS — the heard levels must sync
+   * which mirrors First Light's ATTUNE_LEVELS - the heard levels must sync
    * with the game's level-ups. Other games pass their own table; resonance
    * is attunement >= the table's last entry.
    */
@@ -146,7 +146,7 @@ export const NEUTRAL_STATE: ConductorState = Object.freeze({
  *
  * Timing (§9.2 recommendation): state is SAMPLED per beat, layer changes
  * are APPLIED per bar with a one-bar crossfade ramp. A layer that leaves
- * finishes its bar — gains only ever change at bar lines, never mid-bar.
+ * finishes its bar - gains only ever change at bar lines, never mid-bar.
  */
 export class Conductor {
   private graph: MixGraph;
@@ -171,8 +171,8 @@ export class Conductor {
   /**
    * @param ctx  shared WebAudio context
    * @param graph the mix graph (players feed the 'music' bus via faders)
-   * @param layers score docs per layer (untrusted JSON accepted — validated)
-   * @param bpmOrOpts base tempo (number, legacy) or full options — bpm plus
+   * @param layers score docs per layer (untrusted JSON accepted - validated)
+   * @param bpmOrOpts base tempo (number, legacy) or full options - bpm plus
    *   optional custom attunement thresholds for games other than First Light
    */
   constructor(
@@ -251,7 +251,7 @@ export class Conductor {
       if (fader) fader.gain.setTargetAtTime(gains[name], now, Math.max(0.05, barDur / 3));
     }
     // Resonance: retune every layer to the just lattice on the gate's root.
-    // The beating between detuned voices resolves into consonance — the
+    // The beating between detuned voices resolves into consonance - the
     // world tunes itself when the player does. Uses this conductor's own
     // threshold table so custom games resonate on their own top level.
     const res = resonanceActiveAt(state, this.thresholds);

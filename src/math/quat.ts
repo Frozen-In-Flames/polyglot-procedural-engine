@@ -1,4 +1,4 @@
-// math/quat.ts — quaternions as [x, y, z, w].
+// math/quat.ts - quaternions as [x, y, z, w].
 import type { Vec3 } from './vec.js';
 import type { Mat4 } from './mat.js';
 

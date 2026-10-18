@@ -6,5 +6,13 @@ export default defineConfig({
   // or a subpath (e.g. GitHub Pages) with zero config.
   base: './',
   server: { port: 5173 },
-  build: { outDir: '../dist-demo' },
+  build: {
+    outDir: '../dist-demo',
+    rollupOptions: {
+      input: {
+        main: 'demo/index.html',
+        v10: 'demo/v10.html',
+      },
+    },
+  },
 });

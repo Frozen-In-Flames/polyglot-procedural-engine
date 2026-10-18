@@ -1,4 +1,4 @@
-// math/mat.ts — 4x4 matrices, column-major (WebGL convention), Float32Array(16).
+// math/mat.ts - 4x4 matrices, column-major (WebGL convention), Float32Array(16).
 import type { Vec3 } from './vec.js';
 
 export type Mat4 = Float32Array;

@@ -1,10 +1,10 @@
 // Unit tests for V4 step 2: world composition (runs in node).
-// (a) determinism — same global seed -> identical composed world;
-// (b) coherence — independently authored zones share one continuous field;
-// (c) portals — transition preserves entity state, lands at target spawn;
-// (d) wind field properties — multi-directional, time-varying, deterministic;
-// (e) six-domain write re-derivation — foundry levers reorganize the world;
-// (f) descriptors — JSON round-trip + validation; (g) script integration.
+// (a) determinism - same global seed -> identical composed world;
+// (b) coherence - independently authored zones share one continuous field;
+// (c) portals - transition preserves entity state, lands at target spawn;
+// (d) wind field properties - multi-directional, time-varying, deterministic;
+// (e) six-domain write re-derivation - foundry levers reorganize the world;
+// (f) descriptors - JSON round-trip + validation; (g) script integration.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -135,7 +135,7 @@ test('world: portal transition preserves entity, lands at target spawn', () => {
   const c = crossings[0];
   assert.equal(c.fromZone, 'mote-hollow');
   assert.equal(c.toZone, 'ember-reach');
-  assert.equal(c.entityId, id, 'same entity id — identity preserved, not recreated');
+  assert.equal(c.entityId, id, 'same entity id - identity preserved, not recreated');
   assert.equal(c.entityName, 'player1');
   // Arrival: ember-reach offset [-140,0,0] + targetSpawn [52,4,0].
   assert.deepEqual(c.arrival, [-88, 4, 0]);
@@ -157,7 +157,7 @@ test('world: portal transition preserves entity, lands at target spawn', () => {
 test('world: crossing cooldown prevents instant re-trigger at arrival', () => {
   const { rt, world } = makeStack(SEED);
   const id = rt.spawnHost('player1', { ...T0, position: [-52, 4, 0] }, { tag: 'player' });
-  // Arrival point [-88,4,0] is exactly the return portal mouth — cooldown
+  // Arrival point [-88,4,0] is exactly the return portal mouth - cooldown
   // must hold it for CROSSING_COOLDOWN seconds.
   const c1 = world.update(1 / 60, 20.0);
   assert.equal(c1.length, 1);
@@ -334,7 +334,7 @@ test('world: descriptors round-trip through JSON; validation is strict', () => {
   const parsed = parseZoneDescriptor(raw);
   assert.equal(parsed.id, 'ember-reach');
   assert.equal(parsed.portals.length, 1);
-  // A wind.seed is forbidden by the architectural law — rejected at the door.
+  // A wind.seed is forbidden by the architectural law - rejected at the door.
   const bad = JSON.parse(JSON.stringify(SAMPLE_ZONE_EMBER_REACH)) as Record<string, unknown>;
   (bad.wind as Record<string, unknown>).seed = 123;
   assert.throws(() => parseZoneDescriptor(bad), /wind\.seed.*forbidden/);

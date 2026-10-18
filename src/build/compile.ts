@@ -1,4 +1,4 @@
-// build/compile.ts — compile live behavior scripts in a fresh realm.
+// build/compile.ts - compile live behavior scripts in a fresh realm.
 //
 // Host-only (node): uses the node:vm builtin, zero new dependencies. A
 // behavior source is plain JavaScript defining any of:
@@ -10,7 +10,7 @@
 // `caps` is the sealed behavior capability facade (see seal.ts) and `self`
 // is the sealed handle of the entity the script is attached to.
 //
-// What the script CANNOT see: the vm context starts empty — no process, no
+// What the script CANNOT see: the vm context starts empty - no process, no
 // require, no fetch, no timers, no host globalThis. Math.random is replaced
 // with a throwing stub (Cause and Effect: no hidden randomness; scripts use
 // caps.rng()), and Math/JSON are frozen. Combined with the membrane in

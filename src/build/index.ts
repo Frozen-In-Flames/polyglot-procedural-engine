@@ -1,4 +1,4 @@
-// build/index.ts — public surface of the V5 in-session build tools.
+// build/index.ts - public surface of the V5 in-session build tools.
 //
 // Instruments, not menus: the field brush, rhythm tuning, entity seeding,
 // and live behavior scripting, all as invocations of the V4 scripting

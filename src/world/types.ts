@@ -1,15 +1,15 @@
-// world/types.ts — zone descriptors, portal descriptors, and the six-domain
+// world/types.ts - zone descriptors, portal descriptors, and the six-domain
 // live parameter sets (V4 step 2: world composition).
 //
 // A zone descriptor is PLAIN JSON. An independent developer authors a zone by
-// writing one of these — never by touching engine internals. Descriptors are
+// writing one of these - never by touching engine internals. Descriptors are
 // validated on load (parseZoneDescriptor) and rejected loudly when malformed.
 //
 // Architectural law (Aries, Oct 10, 2026): "local generation, global
 // coherence". The descriptor carries a `wind` section, but that section holds
 // WEIGHTS, never a seed: per-zone local wind always derives from the shared
 // global seeded field (see wind.ts / zones.ts). The descriptor's own `seed`
-// drives zone-local generation (terrain shape, biome detail) only — it must
+// drives zone-local generation (terrain shape, biome detail) only - it must
 // never become an independent wind seed, or 100 developers' zones would read
 // as 100 disconnected breezes instead of one ocean.
 
@@ -21,7 +21,7 @@ export interface Bounds3 {
   max: Vec3JSON;
 }
 
-/** Per-zone WIND WEIGHTS — not a seed. biasWeight blends the zone's anchored
+/** Per-zone WIND WEIGHTS - not a seed. biasWeight blends the zone's anchored
  *  prevailing wind into the local sample; gustScale scales gust amplitude;
  *  shimmerStrength scales how strongly the wind textures the terrain. */
 export interface ZoneWindParams {
@@ -36,7 +36,7 @@ export interface ZoneTerrainParams {
   height: number;        // vertical exaggeration
   baseFrequency: number; // noise frequency (world units^-1)
   octaves: number;       // noise octaves (int > 0)
-  roughness: number;     // 0..1 — high-frequency detail mix
+  roughness: number;     // 0..1 - high-frequency detail mix
 }
 
 export interface ZoneSkyParams {
@@ -81,7 +81,7 @@ export interface ZoneDescriptor {
   portals: PortalDescriptor[];
   /**
    * Optional validated audio block (V8 §5.3). Absent = today's behavior.
-   * Note: this carries a REVERB seed, not a wind seed — the wind-seed ban
+   * Note: this carries a REVERB seed, not a wind seed - the wind-seed ban
    * above is untouched; reverb seeds generate impulse responses, they do
    * not steer the shared wind field.
    */
@@ -116,8 +116,8 @@ export type FieldDomain = 'scene' | 'genesis' | 'biome' | 'tempo' | 'light' | 'p
 
 export interface WindParams {
   gain: number;          // global wind force multiplier (> 0)
-  gustStrength: number;  // 0..1 — second-harmonic gust amplitude
-  playerCoupling: number; // 0..1 — how strongly the player's motion stirs the field (the 7th lever)
+  gustStrength: number;  // 0..1 - second-harmonic gust amplitude
+  playerCoupling: number; // 0..1 - how strongly the player's motion stirs the field (the 7th lever)
 }
 
 export interface SceneParams {
@@ -141,8 +141,8 @@ export interface BiomeParams {
 
 export interface TempoParams {
   beatPeriod: number; // seconds per behavior cycle (> 0)
-  energy: number;     // 0..1 — mote/ember agitation
-  swing: number;      // 0..1 — rhythmic offset
+  energy: number;     // 0..1 - mote/ember agitation
+  swing: number;      // 0..1 - rhythmic offset
 }
 
 export interface LightParams {
@@ -281,7 +281,7 @@ export function parseZoneDescriptor(json: unknown): ZoneDescriptor {
   if (!w) throw new Error('world: descriptor needs a wind section (weights, never a seed)');
   if ('seed' in w) {
     // The law, enforced: a zone must never carry its own wind seed.
-    throw new Error(`world: zone '${id}' carries a wind.seed — forbidden. ` +
+    throw new Error(`world: zone '${id}' carries a wind.seed - forbidden. ` +
       'Per-zone wind derives from the global field; the descriptor may only weight it.');
   }
   const wind: ZoneWindParams = {

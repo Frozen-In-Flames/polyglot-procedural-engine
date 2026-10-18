@@ -1,4 +1,4 @@
-// geo/rocks.ts — noise-displaced rocks, seeded scatter.
+// geo/rocks.ts - noise-displaced rocks, seeded scatter.
 // A rock is a sphere with radial FBM displacement; normals are recomputed
 // as the normalized position (exact for star-shaped rocks, cheap).
 import type { Geometry } from '../scene/components.js';

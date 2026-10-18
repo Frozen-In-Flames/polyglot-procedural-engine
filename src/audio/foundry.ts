@@ -1,9 +1,9 @@
-// audio/foundry.ts — host-only loader for offline-baked audio JSON bundles.
+// audio/foundry.ts - host-only loader for offline-baked audio JSON bundles.
 //
 // Two-sided design (INVERSE.md): the foundry (python/xrgen/audio_foundry.py)
 // may use anything once, offline; its output is a plain JSON parameter
 // bundle; the runtime evaluates the bundle with the same zero-dependency
-// engine. This module only parses and validates bundles — never in the hot
+// engine. This module only parses and validates bundles - never in the hot
 // path. IRs are generated at load from the bundle's seeds via synth.ts,
 // never recorded.
 
@@ -11,7 +11,7 @@
 export interface FoundryIRParams {
   /** Stable name for cache keys and logs. */
   name: string;
-  /** Seed for renderIR — same seed, same tail, every run. */
+  /** Seed for renderIR - same seed, same tail, every run. */
   seed: number;
   /** Tail length seconds (cap 1.5 per the V8 design). */
   lenSec: number;
@@ -98,7 +98,7 @@ function parseTexture(e: unknown, i: number): FoundryTextureParams {
 
 /**
  * Parse and validate an offline-baked audio bundle from untrusted JSON.
- * Throws loudly on malformed bundles — a bad bundle never reaches the graph.
+ * Throws loudly on malformed bundles - a bad bundle never reaches the graph.
  */
 export function parseAudioBundle(json: unknown): AudioBundle {
   if (typeof json !== 'object' || json === null) {
@@ -128,7 +128,7 @@ export function parseAudioBundle(json: unknown): AudioBundle {
   };
 }
 
-/** Alias: "load" reads the same way — the bundle is plain JSON either way. */
+/** Alias: "load" reads the same way - the bundle is plain JSON either way. */
 export const loadAudioBundle = parseAudioBundle;
 
 /** Find an IR parameter set by name (undefined when absent). */

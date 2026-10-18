@@ -1,7 +1,7 @@
 """Tests for the Python ML generation provider.
 
 Mirrors the bar the C++ core cleared: deterministic for a seed, values in
-range, real variance across seeds — plus a bridge round-trip proving the
+range, real variance across seeds - plus a bridge round-trip proving the
 JSON protocol C++/C#/TS will speak.
 """
 import json

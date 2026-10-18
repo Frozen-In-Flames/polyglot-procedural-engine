@@ -1,9 +1,9 @@
-// script/sandbox.ts — the machinery that keeps the capability graph closed.
+// script/sandbox.ts - the machinery that keeps the capability graph closed.
 //
 // THREAT MODEL (be honest): V4 guarantees CAPABILITY-CLOSURE, not
 // malicious-actor containment. That means: a script cannot reach the
 // renderer, the scene graph, the DOM, or any engine internals THROUGH the
-// capability object — the graph is frozen and contains no internal
+// capability object - the graph is frozen and contains no internal
 // references. It does NOT mean a hostile script cannot do hostile things
 // with the full JavaScript language itself (e.g. `Function('return this')()`
 // still reaches the global scope). Full realm isolation (worker/iframe with

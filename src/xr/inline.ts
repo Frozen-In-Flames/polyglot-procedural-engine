@@ -1,4 +1,4 @@
-// xr/inline.ts — desktop fallback: renders the scene camera to the canvas
+// xr/inline.ts - desktop fallback: renders the scene camera to the canvas
 // with a normal requestAnimationFrame loop. Same SessionProvider seam.
 import type {
   SessionProvider, XRSessionHandle, XRMode, FrameCallback, RenderView,

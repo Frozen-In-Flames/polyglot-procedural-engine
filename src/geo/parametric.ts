@@ -1,4 +1,4 @@
-// geo/parametric.ts — parametric surface generators. Pure functions, no assets.
+// geo/parametric.ts - parametric surface generators. Pure functions, no assets.
 import type { Geometry } from '../scene/components.js';
 
 export interface ParamOptions {

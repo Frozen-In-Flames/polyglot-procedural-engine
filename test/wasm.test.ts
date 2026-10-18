@@ -53,7 +53,7 @@ test('wasm bridge: C++ heightfield via WasmGenCore', async (t) => {
 // callable; renders must be deterministic (same seed → bit-identical
 // samples, docs/V8-AUDIO.md §2.6); double-precision phase must stay stable
 // over long renders. Follows the existing skip pattern when the WASM build
-// itself is absent — but a PRESENT build without the V8 exports is a
+// itself is absent - but a PRESENT build without the V8 exports is a
 // contract mismatch and fails (rebuild via native/build-wasm.sh).
 test('wasm dsp core (V8): xr_dsp_* exports present, callable, deterministic', async (t) => {
   const genUrl = new URL('file:///home/hatch/workspace/xr-engine/demo/public/gen/gen.js');
@@ -123,7 +123,7 @@ test('wasm dsp core (V8): xr_dsp_* exports present, callable, deterministic', as
 
   // Double-precision phase stability over long renders (§7.1): a 4-second
   // oscillator render must be bit-identical across runs and free of
-  // NaN/Inf drift — float32 phase would audibly wander over a loop.
+  // NaN/Inf drift - float32 phase would audibly wander over a loop.
   const long1 = render('_xr_dsp_osc', 7, 44100 * 4, 44100, 0, 110.0, 0.0);
   const long2 = render('_xr_dsp_osc', 7, 44100 * 4, 44100, 0, 110.0, 0.0);
   assert.ok(long1.every((v, i) => v === long2[i]), 'long render: bit-identical across runs');

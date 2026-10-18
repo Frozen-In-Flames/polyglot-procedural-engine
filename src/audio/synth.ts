@@ -1,8 +1,8 @@
-// audio/synth.ts — TypeScript mirror of the C++ DSP core (V8 §1.2, §2).
+// audio/synth.ts - TypeScript mirror of the C++ DSP core (V8 §1.2, §2).
 //
 // Renders short voices (plucks, pings, risers, gusts) and generated reverb
 // impulses to AudioBuffers for one-shot SFX. Zero asset dependence: no
-// samples, no wavetables, no recorded impulses — every value below is math
+// samples, no wavetables, no recorded impulses - every value below is math
 // evaluated at runtime from (seed, params).
 //
 // Determinism contract (§2.6, INVERSE.md honesty precedent):
@@ -20,11 +20,11 @@
 //     not part of the C++ mirror contract.
 //
 // ULP BOUNDS (vs the C++ double-precision reference, same seed, float32 out):
-//   pluckKS   — bit-exact on measured vectors (one exp; V8/libm agree here)
-//   modalBank — <=3 ulp per sample (sin + exp per mode, accumulated)
-//   riserFM   — TS-only, no C++ counterpart
-//   gustNoise — TS-only, no C++ counterpart
-//   renderIR  — <=2 ulp per sample (one exp + one cos per sample)
+//   pluckKS   - bit-exact on measured vectors (one exp; V8/libm agree here)
+//   modalBank - <=3 ulp per sample (sin + exp per mode, accumulated)
+//   riserFM   - TS-only, no C++ counterpart
+//   gustNoise - TS-only, no C++ counterpart
+//   renderIR  - <=2 ulp per sample (one exp + one cos per sample)
 
 import { mulberry32 } from '../geo/rng.js';
 
@@ -49,8 +49,8 @@ const K2P64 = 18446744073709551616; // 2^64, exact in double
  * SplitMix64 bit-matching native/gen/dsp/dsp.hpp (and python/xrgen/rng.py).
  * The C++ DSP exports take `unsigned seed` (32-bit), so the state is the
  * zero-extended seed with no extra mixing. uniform() converts the u64 to
- * double with correct rounding — Number(bigint) rounds exactly like C++'s
- * (double)uint64_t cast — then divides by 2^64, mirroring the C++ formula
+ * double with correct rounding - Number(bigint) rounds exactly like C++'s
+ * (double)uint64_t cast - then divides by 2^64, mirroring the C++ formula
  * op-for-op. This is the stream the TS DSP mirror must draw from; the
  * xorshift32 above is for TS-only voices (riser/gust), not the mirror.
  */
@@ -84,7 +84,7 @@ function clampRate(rate: number): number {
 }
 
 /**
- * Karplus-Strong plucked string (§2.4) — exact mirror of xr_dsp_pluck in
+ * Karplus-Strong plucked string (§2.4) - exact mirror of xr_dsp_pluck in
  * native/gen/dsp/dsp.cpp. Fractional-period delay line (exact pitch at any
  * rate) excited by a seeded SplitMix64 noise burst, two-tap loop averaging,
  * per-period gain exp(-decay/freq) so decay is honestly per second.
@@ -140,12 +140,12 @@ export function pluckKS(
 }
 
 /**
- * Modal resonator bank (§2.4) — exact mirror of xr_dsp_modal in
+ * Modal resonator bank (§2.4) - exact mirror of xr_dsp_modal in
  * native/gen/dsp/dsp.cpp. Stiff-string partials
  *   ratio_k = (k+1) * sqrt(1 + B*(k+1)^2),  B = uniform(0, 0.0012)
  * amplitudes uniform(0.5,1)/(k+1)^1.5, per-mode decay, seeded phases, and
  * double-precision phase accumulators (phase[k] += ratio*freq/sr, wrapped
- * at 1.0 — the audible difference over a loop is a voice that holds vs one
+ * at 1.0 - the audible difference over a loop is a voice that holds vs one
  * that wanders). Output normalized by the amplitude sum, exactly like the
  * reference. Transcendentals (sqrt/pow/sin/exp) are tolerance-close per the
  * header bounds; everything else is integer/rational and bit-exact.
@@ -262,7 +262,7 @@ export function gustNoise(
   const rnd = makeXorShift32(seed);
   const wob = mulberry32((seed ^ 0x77aa11) >>> 0);
   // Slow wandering cutoff: a few seeded sinusoid partials, fixed integer
-  // arithmetic on the phase — but sin() itself is 1-ulp; the WANDER is the
+  // arithmetic on the phase - but sin() itself is 1-ulp; the WANDER is the
   // only transcendental here. Documented: the wander LFO is <=1 ulp, the
   // noise path is bit-exact.
   const wFreqs = [0.13, 0.31, 0.53];
@@ -286,12 +286,12 @@ export function gustNoise(
 }
 
 /**
- * Generated impulse response — exact mirror of xr_dsp_ir in
+ * Generated impulse response - exact mirror of xr_dsp_ir in
  * native/gen/dsp/dsp.cpp (§1.2, §2.5). Seeded SplitMix64 noise shaped by
  * exponential decay and progressive lowpassing (the smoother coefficient
  * ramps 0 -> damping over the IR, so highs die first like a real room),
  * with a 5 ms raised-cosine tail fade for click-free tails, peak-normalized
- * to 1.0. Reverb zones convolve with these — the impulse never came from
+ * to 1.0. Reverb zones convolve with these - the impulse never came from
  * a microphone. One exp + one cos per sample are the only transcendentals.
  */
 export function renderIR(

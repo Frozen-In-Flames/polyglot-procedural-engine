@@ -1,4 +1,4 @@
-// scene/node.ts — node graph with parent/child transforms.
+// scene/node.ts - node graph with parent/child transforms.
 import type { Vec3 } from '../math/vec.js';
 import { v3 } from '../math/vec.js';
 import type { Quat } from '../math/quat.js';

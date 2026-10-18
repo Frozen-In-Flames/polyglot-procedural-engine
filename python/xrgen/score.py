@@ -1,7 +1,7 @@
-"""score.py — the arrangement library for V8 adaptive composition.
+"""score.py - the arrangement library for V8 adaptive composition.
 
 Pure functions of (rng, params): progression families, voice-leading
-helpers, density curves, state quantization. Standard library only —
+helpers, density curves, state quantization. Standard library only -
 this sits on the runtime path, so no numpy, no scipy, no transcendentals
 on the decision path (the composition decisions must stay bit-exact
 across the Python/C#/TypeScript mirrors; only freqs may use
@@ -28,7 +28,7 @@ PROGRESSION_FAMILIES = [
 MINOR_PENTA = [0, 3, 5, 7, 10, 12, 15]  # minor pentatonic, semitones
 
 # First Light attunement thresholds (six levels). These MUST match the game's
-# ATTUNE_LEVELS in games/first-light/shared.ts — the heard levels stay in
+# ATTUNE_LEVELS in games/first-light/shared.ts - the heard levels stay in
 # sync with the game's level-ups. (The V8 design doc's 15/30/45/60/75/90 was
 # wrong; the game is the source of truth.)
 ATTUNEMENT_THRESHOLDS = (12, 28, 44, 60, 74, 88)
@@ -76,7 +76,7 @@ def _quantize(v: float, lo: float, hi: float, steps: int) -> int:
 def state_fingerprint(state) -> int:
     """Deterministic u64 fingerprint of a clamped state vector.
 
-    Integer arithmetic only — no floats, no transcendentals — so the same
+    Integer arithmetic only - no floats, no transcendentals - so the same
     state always folds into the same seed bits on every platform.
     """
     st = clamp_state(state)
@@ -121,7 +121,7 @@ def note_density(energy: float) -> float:
 def density_envelope(energy: float, pos: float) -> float:
     """Density scaled by position-in-bar (pos in [0,1)); swells with energy.
 
-    Linear only — no transcendentals on the decision path.
+    Linear only - no transcendentals on the decision path.
     """
     pos = 0.0 if pos < 0.0 else 1.0 if pos > 1.0 else pos
     return note_density(energy) * (0.60 + 0.40 * pos)

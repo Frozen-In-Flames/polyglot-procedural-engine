@@ -1,11 +1,11 @@
 // Unit tests for V5 step 1: in-session build tools (runs in node).
-// (a) brush determinism — same seed+params = identical field samples;
-// (b) brush locality — far-field samples bit-identical with/without a brush;
-// (c) rhythm tuning — local blend, deterministic;
-// (d) entity seeding determinism — same kind+seed = identical body;
-// (e) live scripting — a good behavior runs; a malicious one cannot escape;
-// (f) op emission — every tool action emits one valid, hash-chained op;
-// (g) ingest — a foreign op log replays into an identical local view.
+// (a) brush determinism - same seed+params = identical field samples;
+// (b) brush locality - far-field samples bit-identical with/without a brush;
+// (c) rhythm tuning - local blend, deterministic;
+// (d) entity seeding determinism - same kind+seed = identical body;
+// (e) live scripting - a good behavior runs; a malicious one cannot escape;
+// (f) op emission - every tool action emits one valid, hash-chained op;
+// (g) ingest - a foreign op log replays into an identical local view.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ScriptRuntime, MemoryEntityBackend } from '../src/script/index.js';

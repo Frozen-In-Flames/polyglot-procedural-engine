@@ -97,17 +97,17 @@ displacement params. Foundry-only, stdlib-only, deterministic.
 
 ## Files
 
-- `python/xrgen/inverse.py` — the foundry (splat, strip, fit, bundle).
-- `python/xrgen/geometry.py` — geometry foundry (unproject, plane fit,
+- `python/xrgen/inverse.py` - the foundry (splat, strip, fit, bundle).
+- `python/xrgen/geometry.py` - geometry foundry (unproject, plane fit,
   displacement fit, `xr-geom/1` bundle).
-- `python/test/test_inverse.py` — foundry tests, all synthetic, CPU-only.
-- `python/test/test_geometry.py` — geometry foundry tests, all synthetic.
-- `src/render/gbuffer.ts` — G-buffer shaders and buffer layout.
-- `src/render/renderer.ts` — `captureGBuffer()` (foundry-only).
-- `src/material/shader.ts` — the `distill` material effect.
-- `src/bridge/distill.ts` — bundle validation, application, TS reference.
-- `test/inverse.test.ts` — runtime-side tests incl. the bit-exact check.
-- `docs/colab/v3-distillation.ipynb` — Colab fallback notebook.
+- `python/test/test_inverse.py` - foundry tests, all synthetic, CPU-only.
+- `python/test/test_geometry.py` - geometry foundry tests, all synthetic.
+- `src/render/gbuffer.ts` - G-buffer shaders and buffer layout.
+- `src/render/renderer.ts` - `captureGBuffer()` (foundry-only).
+- `src/material/shader.ts` - the `distill` material effect.
+- `src/bridge/distill.ts` - bundle validation, application, TS reference.
+- `test/inverse.test.ts` - runtime-side tests incl. the bit-exact check.
+- `docs/colab/v3-distillation.ipynb` - Colab fallback notebook.
 
 ## Status
 
@@ -140,3 +140,37 @@ sky dome renders **zero** fragments from inside (0/4096 texels covered):
 the demo's sky gradient and stars are currently invisible. The fix is a
 one-line winding correction in `sphere()` (then `skyDome()`'s reversal
 works as documented).
+
+## V10 (2026-10-18): runtime inverse solvers
+
+The two-sided design holds: the foundry may use heavy compute, the runtime
+stays zero-dependency. The V10 solvers live runtime-side because they are
+tiny and dependency-free: classical least squares plus gradient descent,
+a few hundred lines total, no autodiff library, no neural pipeline.
+
+Three solvers ship in `src/inverse/solvers.ts`:
+
+- `solveLighting`: light intensities and per-channel colors from target
+  brightness samples. Candidate positions are fixed by the caller; the
+  solve is linear least squares with a non-negativity projection
+  (unphysical negative light is clipped, documented as the physical
+  constraint). Model: Lambertian, known positions/normals, no shadows.
+- `solveLightPosition`: one light's position and intensity from targets,
+  with the Lambert baseline R_j = dot(n, l) as the render model. This is
+  the acceptance-demo solver: it drags light_pos until the render matches
+  the target, and the iteration log shows the convergence.
+- `fitMaterialCoeffs`: procedural material coefficients for models linear
+  in their parameters, with R^2 reported and fits below 0.70 flagged
+  failed.
+
+All three share one gradient-descent driver implementing the spec
+exactly: L(theta) = 1/2 sum_j (R_j(theta) - y_j)^2,
+theta^{(t+1)} = theta^{(t)} - eta * grad L(theta), gradients by central
+finite differences (documented step 1e-5, scaled per coordinate).
+Deterministic, inspectable, every solve logging iterations and residual.
+
+Documented limits: the shading model inverted is the raymarcher's
+baseline (Lambert only); light-position solving is non-convex, so start
+positions matter; material fits cover linear-in-parameter models only.
+See docs/methods-provenance.md for the IP position: these are 19th-century
+optimization methods, not neural inverse-rendering pipelines.

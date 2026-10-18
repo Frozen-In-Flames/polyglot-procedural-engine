@@ -1,4 +1,4 @@
-// render/gbuffer.ts — foundry-only G-buffer capture for the V3 inverse
+// render/gbuffer.ts - foundry-only G-buffer capture for the V3 inverse
 // pipeline. Renders UV, view depth, normals, and shading-without-albedo
 // so python/xrgen/inverse.py can reproject a super-resolved frame into
 // texture space and strip lighting (albedo = observed / shading).

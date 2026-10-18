@@ -1,4 +1,4 @@
-// math/vec.ts — vector ops. Tuples, no allocation inside hot paths where avoidable.
+// math/vec.ts - vector ops. Tuples, no allocation inside hot paths where avoidable.
 export type Vec2 = [number, number];
 export type Vec3 = [number, number, number];
 export type Vec4 = [number, number, number, number];

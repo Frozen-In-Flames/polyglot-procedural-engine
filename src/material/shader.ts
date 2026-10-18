@@ -1,4 +1,4 @@
-// material/shader.ts — compose GLSL fragment snippets into procedural materials.
+// material/shader.ts - compose GLSL fragment snippets into procedural materials.
 // No texture files: every visual is math evaluated per-pixel.
 import type { Material } from '../scene/components.js';
 

@@ -1,4 +1,4 @@
-// bridge/providers.ts — the seams other languages implement.
+// bridge/providers.ts - the seams other languages implement.
 //
 // TypeScript is the v1 host. Each provider interface below has a concrete
 // implementation in its language's directory:

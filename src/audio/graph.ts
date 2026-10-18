@@ -1,9 +1,9 @@
-// audio/graph.ts — the mix graph (V8 §1.1).
+// audio/graph.ts - the mix graph (V8 §1.1).
 //
 // master → music bus → sfx bus → voice buses. Every driver connects through
 // named buses, never straight to the destination. Bus gains are the
 // conductor's faders. One DynamicsCompressorNode sits on the master as a
-// safety limiter only — not as a sound.
+// safety limiter only - not as a sound.
 //
 // Zero asset dependence: every sample reaching these buses is math evaluated
 // at runtime (synth.ts, the DSP core, or Web Audio oscillators).
@@ -25,7 +25,7 @@ export class MixGraph {
     master.gain.value = 0.9;
     // Safety limiter: brick-wall-ish, fast, transparent. It exists so a
     // hostile script (capability-closure threat model) can be annoying but
-    // never clip the user's ears. Not a sound — never driven for color.
+    // never clip the user's ears. Not a sound - never driven for color.
     const limiter = ctx.createDynamicsCompressor();
     limiter.threshold.value = -6;   // dB: only catches real overs
     limiter.knee.value = 0;         // hard knee: limiter, not compressor
@@ -56,7 +56,7 @@ export class MixGraph {
   }
 
   /**
-   * Set a bus gain — the conductor's fader move. Ramps over `rampSec`
+   * Set a bus gain - the conductor's fader move. Ramps over `rampSec`
    * (default 0.05 s) so per-bar crossfades never click.
    */
   setBusGain(name: BusName, value: number, rampSec = 0.05): void {

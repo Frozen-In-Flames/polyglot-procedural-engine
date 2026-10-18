@@ -1,4 +1,4 @@
-"""audio_foundry.py — OFFLINE-ONLY audio design tooling for V8.
+"""audio_foundry.py - OFFLINE-ONLY audio design tooling for V8.
 
 The two-sided foundry design: this module may use numpy/scipy ONCE, at
 design time, to design reverb IR parameter sets, analyze spectra of
@@ -163,7 +163,7 @@ def bake_pad_bundle(seed: int, seconds: float = 32.0,
 
     The runtime evaluates the bundle: per-segment chord roots, per-voice
     semitone offsets, gain/filter envelopes as linear control points.
-    No audio is stored — only the numbers the engine's own oscillators
+    No audio is stored - only the numbers the engine's own oscillators
     need to re-perform the pad deterministically.
     """
     _require_numpy()

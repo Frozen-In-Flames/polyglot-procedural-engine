@@ -1,7 +1,7 @@
 # Polyglot Procedural Engine
 
-**PPE** — a personal procedural VR/AR/MR/XR engine. Zero asset files: every visual
-and sound is generated in code at runtime. The point of v1 is the **proof** — all
+**PPE** - a personal procedural VR/AR/MR/XR engine. Zero asset files: every visual
+and sound is generated in code at runtime. The point of v1 is the **proof** - all
 languages working together to replace assets entirely.
 
 > **Why the name:** this project was formerly called "XR Engine." It was renamed
@@ -22,13 +22,13 @@ languages working together to replace assets entirely.
 
 ## Layout
 
-- `src/` — TypeScript core: `math/`, `scene/`, `geo/`, `material/`, `render/`,
+- `src/` - TypeScript core: `math/`, `scene/`, `geo/`, `material/`, `render/`,
   `xr/`, `audio/`, `bridge/` (provider interfaces + WASM loader)
-- `native/gen/` — C++ procedural core (`gen.hpp`/`gen.cpp`), `build-wasm.sh`
-- `dotnet/` — C# ScriptProvider
-- `swift/` — visionOS provider
-- `kotlin/` — Android XR provider
-- `demo/` — "First Light" proof scene with a HUD pipeline overlay naming the
+- `native/gen/` - C++ procedural core (`gen.hpp`/`gen.cpp`), `build-wasm.sh`
+- `dotnet/` - C# ScriptProvider
+- `swift/` - visionOS provider
+- `kotlin/` - Android XR provider
+- `demo/` - "First Light" proof scene with a HUD pipeline overlay naming the
   language behind each system
 
 ## Verify
@@ -59,7 +59,7 @@ it runs as inline 3D (drag to look, scroll to zoom).
 ## v1 acceptance
 
 The demo scene renders a procedural world (terrain, gate, orb field, generative
-pad audio) with **no asset files on disk or network** — no models, no textures,
+pad audio) with **no asset files on disk or network** - no models, no textures,
 no audio files. The only binary fetched is `gen.wasm`, which is compiled code,
 not content.
 

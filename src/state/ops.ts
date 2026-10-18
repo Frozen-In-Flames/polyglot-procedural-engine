@@ -1,4 +1,4 @@
-// state/ops.ts — op construction and validation (V5 step 2).
+// state/ops.ts - op construction and validation (V5 step 2).
 //
 // Validation is pure and deterministic: every node applies the exact same
 // rules, so accept/reject decisions never diverge between nodes that saw

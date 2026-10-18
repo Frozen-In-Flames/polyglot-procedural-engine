@@ -1,10 +1,10 @@
-// build/session.ts — the in-session build session.
+// build/session.ts - the in-session build session.
 //
 // The instrument is the V4 runtime, worn on the hands: every tool invokes
 // the capability API (field.read for sampling, world.spawn for seeding, the
 // sandboxed runtime for live behaviors) and never touches engine internals.
-// Every tool action emits exactly one BuildOp — the schema shared with the
-// distributed state graph (src/state/) — so the same op log replays to the
+// Every tool action emits exactly one BuildOp - the schema shared with the
+// distributed state graph (src/state/) - so the same op log replays to the
 // same world on every node: local generation, global coherence.
 //
 // Op payloads validate against the state module's validatePayload, so ops
@@ -50,7 +50,7 @@ const INSTRUMENT_GRANTS: CapabilityName[] = [
 
 /**
  * Grants for attached behavior scripts: enough to sense and act (spawn,
- * query, events, log, the shared wind), never the foundry writes — those
+ * query, events, log, the shared wind), never the foundry writes - those
  * stay with the top attunement tier.
  */
 const BEHAVIOR_GRANTS: CapabilityName[] = [
@@ -194,7 +194,7 @@ export class BuildSession {
     const v = validateBrush(center, radius, opts);
     const id = `brush-${this.brushCount++}`;
     // The replay key: explicit when the builder gives one, otherwise derived
-    // from (session seed, brush id) — deterministic either way, and always
+    // from (session seed, brush id) - deterministic either way, and always
     // recorded on the op so replay never depends on the derivation.
     const seed = opts.seed === undefined
       ? parseInt(fnv1aHex(`${this.seed}:${id}`), 16) >>> 0

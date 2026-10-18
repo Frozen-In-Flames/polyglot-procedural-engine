@@ -1,4 +1,4 @@
-// audio/dsp.ts — the WASM DSP bridge (V8 §1.1).
+// audio/dsp.ts - the WASM DSP bridge (V8 §1.1).
 //
 // Loads the compiled DSP module (native/gen/dsp/, built from repo sources
 // only) and calls the xr_dsp_* exports, wrapping returned samples in looping
@@ -6,7 +6,7 @@
 // src/bridge/wasm.ts keeps working: DspBridge wraps the same export through
 // the same malloc/free discipline rather than replacing it.
 //
-// NOTE (Oct 13, 2026): native/gen/dsp/ has not landed yet — only the
+// NOTE (Oct 13, 2026): native/gen/dsp/ has not landed yet - only the
 // long-standing _xr_dsp_voice export exists in the built module. The bridge
 // therefore treats every render export as optional: `available()` reports
 // which exports the loaded module actually carries, render methods throw a

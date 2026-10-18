@@ -1,10 +1,10 @@
-// world/zones.ts — zone descriptors become live zones.
+// world/zones.ts - zone descriptors become live zones.
 //
 // A Zone is local generation bound to global coherence:
 //  - terrain / sky / biome visuals derive from the zone descriptor's OWN
 //    seed and params (the developer's local authorship), modulated by the
 //    live six-domain field params (scene/genesis/biome levers);
-//  - the zone's WIND derives ONLY from the shared GlobalField — the
+//  - the zone's WIND derives ONLY from the shared GlobalField - the
 //    descriptor's wind section contributes weights (biasWeight, gustScale,
 //    shimmerStrength), never structure. There is no per-zone wind seed
 //    anywhere in this file; parseZoneDescriptor rejects one at the door.
@@ -16,7 +16,7 @@
 //     + anchorMean * biasWeight
 //
 // where p_world = p_local + placement.offset and anchorMean is the global
-// field averaged over a ring of 8 probes around the zone anchor at t = 0 —
+// field averaged over a ring of 8 probes around the zone anchor at t = 0 -
 // i.e. the zone's prevailing wind, read off the global ocean, then cached
 // per field revision. Two zones at the same world point read the same
 // global vector; their local winds differ only by authored weights. That is
@@ -89,7 +89,7 @@ export class Zone {
     this.anchorMean = {
       x: mx / ANCHOR_PROBES, y: my / ANCHOR_PROBES, z: mz / ANCHOR_PROBES,
     };
-    this.terrainGeo = null; // rebuilt lazily — geometry follows the math
+    this.terrainGeo = null; // rebuilt lazily - geometry follows the math
     this.derivedRevision = this.field.revision;
   }
 
@@ -109,7 +109,7 @@ export class Zone {
   /**
    * Local wind at a ZONE-LOCAL position and time. Global structure, local
    * weights: the same world point sampled through two zones' localWind
-   * differs only by authored weights — the underlying ocean is identical.
+   * differs only by authored weights - the underlying ocean is identical.
    */
   localWind(p: Vec3JSON, t: number): WindSample {
     this.sync();
@@ -123,7 +123,7 @@ export class Zone {
     };
   }
 
-  /** Raw global field at a zone-local position (the coherence primitive —
+  /** Raw global field at a zone-local position (the coherence primitive -
    *  identical for every zone at the same world point). */
   globalWindAt(p: Vec3JSON, t: number): WindSample {
     const w = this.toWorld(p);
@@ -159,7 +159,7 @@ export class Zone {
     const d = this.descriptor;
     const fp = this.field.snapshot();
     const strength = fp.scene.shimmerStrength * d.wind.shimmerStrength;
-    const wavelength = 9; // world units — the water's texture scale
+    const wavelength = 9; // world units - the water's texture scale
     const k = (Math.PI * 2) / wavelength;
     const amp = 0.05 * strength * d.terrain.height * fp.scene.terrainHeight;
     const lean = 0.12 * strength;

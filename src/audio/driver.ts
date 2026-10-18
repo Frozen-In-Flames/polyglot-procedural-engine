@@ -1,11 +1,11 @@
-// audio/driver.ts — the polyglot audio contract.
+// audio/driver.ts - the polyglot audio contract.
 //
 // Every language contributes audio in the same two shapes:
 //
-//   Score  — a loopable list of note events (the shared JSON format).
+//   Score  - a loopable list of note events (the shared JSON format).
 //            Python, C#, Swift, and Kotlin compose scores; any renderer
 //            can play them. The demo's ScorePlayer renders them with WebAudio.
-//   Voice  — raw DSP samples rendered by a provider. C++ renders its synth
+//   Voice  - raw DSP samples rendered by a provider. C++ renders its synth
 //            voice to WASM and the host loops the buffer.
 //
 // Score format:
@@ -15,7 +15,7 @@
 // kinds: "tone" | "pad" | "bass" | "noise" (v1.0) plus V8 additions
 // "pluck" | "ping" | "riser" | "gust" | "granular" (score schema v1.1).
 // "pan" is optional (-1..1). V8 optional event fields: attack (s),
-// decay (s), filterFreq (Hz), reverbSend (0..1) — all range-clamped by
+// decay (s), filterFreq (Hz), reverbSend (0..1) - all range-clamped by
 // validateScore and ignored by renderers that do not understand them.
 
 export type ScoreKind =
@@ -29,10 +29,10 @@ export interface AudioEvent {
   kind: ScoreKind;
   gain: number;   // 0..1
   pan?: number;   // -1..1, optional
-  attack?: number;     // seconds, 0.001..4 — envelope attack (V8)
-  decay?: number;      // seconds, 0.001..8 — release tail (V8)
-  filterFreq?: number; // Hz, 20..20000 — voice lowpass (V8)
-  reverbSend?: number; // 0..1 — per-event reverb send (V8)
+  attack?: number;     // seconds, 0.001..4 - envelope attack (V8)
+  decay?: number;      // seconds, 0.001..8 - release tail (V8)
+  filterFreq?: number; // Hz, 20..20000 - voice lowpass (V8)
+  reverbSend?: number; // 0..1 - per-event reverb send (V8)
 }
 
 export interface ScoreDoc {
@@ -114,7 +114,7 @@ export class ScorePlayer {
   /**
    * Optional just-intonation lattice (absolute Hz, ascending). When set,
    * every event's frequency snaps to the nearest lattice degree in log
-   * space — this is how the conductor performs the resonance retune (§4.3).
+   * space - this is how the conductor performs the resonance retune (§4.3).
    * Null (default) plays score frequencies as written. Additive: old
    * behavior is exactly the null case.
    */
@@ -279,7 +279,7 @@ export class ScorePlayer {
         break;
       }
     }
-    // Note: reverbSend is accepted by validateScore but not wired here —
+    // Note: reverbSend is accepted by validateScore but not wired here -
     // ScorePlayer is the portable demo renderer; zone reverb lives in the
     // spatial graph (spatial.ts), which owns convolvers.
     if (e.pan !== undefined && Math.abs(e.pan) > 0.01 && 'createStereoPanner' in this.ctx) {

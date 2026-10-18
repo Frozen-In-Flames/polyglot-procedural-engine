@@ -50,7 +50,7 @@ test('script: float reference spawns an entity and animates it', () => {
   assert.equal(rt.errors.length, 0);
 });
 
-test('script: determinism — same seed, same run, same behavior (incl. RNG)', () => {
+test('script: determinism - same seed, same run, same behavior (incl. RNG)', () => {
   const wander: ScriptDef = {
     name: 'wander',
     start(c) { c.world.spawn('w', { position: [c.rng() * 10, 0, c.rng() * 10] }); },
@@ -86,7 +86,7 @@ test('script: per-script RNG streams are seeded and reproducible', () => {
   assert.notDeepEqual(seq(SEED, 'a'), seq(SEED, 'b'), 'streams differ per script name');
 });
 
-test('script: events — host input reaches scripts, data is isolated', () => {
+test('script: events - host input reaches scripts, data is isolated', () => {
   const rt = new ScriptRuntime(SEED, new MemoryEntityBackend());
   const seen: JSONValue[] = [];
   rt.load({
@@ -224,7 +224,7 @@ test('script: default grant set is full authorship', () => {
   assert.ok(h.alive);
 });
 
-test('script: foundry tier shape — six per-domain write grants exist', () => {
+test('script: foundry tier shape - six per-domain write grants exist', () => {
   const domains = ['scene', 'genesis', 'biome', 'tempo', 'light', 'presence'] as const;
   for (const d of domains) {
     const cap = `field.write.${d}` as const;
@@ -235,7 +235,7 @@ test('script: foundry tier shape — six per-domain write grants exist', () => {
 
 // ---------- (b) adversarial sandbox boundary tests ----------
 //
-// Threat model (honest): these prove CAPABILITY-CLOSURE — nothing reachable
+// Threat model (honest): these prove CAPABILITY-CLOSURE - nothing reachable
 // through the capability object graph leads to engine internals. They do NOT
 // prove containment of a malicious actor wielding the full JS language
 // (Function('return this')() etc.); full realm isolation is future work.
@@ -280,7 +280,7 @@ test('sandbox: handle exposes no forgeable identity', () => {
   for (const k of keys) assert.ok(!k.startsWith('_'), `no private-looking key: ${k}`);
   assert.equal(Object.getPrototypeOf(handle), Object.prototype);
   // The numeric id is informational only: no capability function accepts a
-  // raw id, so copying it onto a forged object grants nothing — authority
+  // raw id, so copying it onto a forged object grants nothing - authority
   // flows exclusively through the engine-side WeakMap-bound handle object
   // (see 'forged handles cannot destroy entities' below).
 });

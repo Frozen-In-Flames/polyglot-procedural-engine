@@ -1,4 +1,4 @@
-// geo/rng.ts — seeded PRNG so every generated world is reproducible.
+// geo/rng.ts - seeded PRNG so every generated world is reproducible.
 export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {

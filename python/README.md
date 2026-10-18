@@ -1,4 +1,4 @@
-# Python — ML generation provider
+# Python - ML generation provider
 
 Python is the engine's ML brain. It doesn't script scenes and it doesn't do
 glue: it owns the *learned-function* side of procedural generation.
@@ -20,12 +20,12 @@ them. The demo plays `demo/public/gen/python-score.json` through the
 (`dotnet/XrEngine.Providers/AudioScore.cs`), the Swift `VisionAudioDriver`,
 and the Kotlin `AndroidXrAudioDriver`.
 
-Standard library only. No numpy, no torch — it has to run embedded next to
+Standard library only. No numpy, no torch - it has to run embedded next to
 C++ and spawned next to C# without a packaging story.
 
 ## How other languages call it
 
-**JSON-lines RPC over stdio** — the one protocol every language speaks:
+**JSON-lines RPC over stdio** - the one protocol every language speaks:
 
 ```bash
 cd python && python3 -m xrgen.bridge
@@ -47,7 +47,7 @@ cd python && python3 -m xrgen.bridge
 ## The demo's Python contribution
 
 `demo/scripts/gen-style-params.py` runs the real provider and writes
-`demo/public/gen/python-style.json` — the seeded MLP weights. The demo
+`demo/public/gen/python-style.json` - the seeded MLP weights. The demo
 loads them at runtime and applies the style over the C++-generated terrain.
 Regenerate any time:
 
