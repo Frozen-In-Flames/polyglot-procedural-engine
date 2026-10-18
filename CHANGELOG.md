@@ -3,6 +3,37 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [1.3.0] - V10.4 "Integrate all" (2026-10-18)
+
+Eight integrated subsystems (minor version per semver). Tests written
+before implementation; the identity suite is green before the tag. The
+validation ledger in docs/methods-provenance.md marks every formula as
+validated or unvalidated; the two incoming owner oracles (SH
+white-environment E=pi, error-state filter vs simulated gyro bias) do
+not block the tag and will be ported on arrival.
+
+- **Noise derivatives** (`src/math/noisegrad.ts`): analytic 3D
+  value-noise gradient, fBm chain rule, ||grad N|| bound with
+  brute-force verification. 5 tests.
+- **Conservative audit** (`src/math/conservative.ts`, scale3 in
+  `src/math/sdf.ts`): every node audited against |f| <= true distance.
+  7 tests.
+- **Terrain distance** (`src/geo/terrain-dist.ts`): conservative
+  heightfield distance. 4 tests.
+- **Cost model + safe over-relaxation** (`src/math/overrelax.ts`):
+  R_dot = 2WH f_r (1-rho_fov), grazing N = L ln(d0/eps)/gamma; 33%
+  fewer steps, zero tunneling. 4 tests.
+- **Geometry gradients** (`src/inverse/geograd.ts`): dt*/dtheta,
+  dn/dtheta, 2D silhouette identities; 3D normal speed UNVALIDATED and
+  throws. 3 tests.
+- **VARPRO** (`src/inverse/varpro.ts`): merged rho*E, QR, Golub-Pereyra
+  + Kaufman, rank cutoff policy. 5 tests.
+- **Temporal stability** (`src/render/temporal.ts`): Halton, EMA,
+  history clamps (ghost 0.051 -> 0.000/0.003), One Euro, spring with
+  polynomial exp. 7 tests.
+- **Acoustics** (`src/audio/acoustics.ts`): Monte Carlo volume/area,
+  Sabine/Eyring, FDN, SN3D/ACN ambisonics. 6 tests.
+
 ## [1.2.0] - V10.3 "Add all: to the engine" (2026-10-18)
 
 New subsystems (minor version per semver). Tests written before

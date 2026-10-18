@@ -57,3 +57,11 @@ export { ParamRegistry, CurveParam, mountTuningDeck, TUNING_DECK_CSS } from './u
 export type { ParamDef, ParamListener, DeckSection } from './ui/tuning.js';
 export { evalTerm, evalSlider, evalSemantics, SEMANTIC_SLIDERS, blocks, live, stackBlocks, sineWarp, demoWorld, demoUniforms } from './world/semantic.js';
 export type { SemanticTerm, SemanticSlider, Block } from './world/semantic.js';
+export * from './math/noisegrad.js';
+export * from './math/conservative.js';
+export * from './math/overrelax.js';
+export * from './geo/terrain-dist.js';
+export * from './inverse/geograd.js';
+export * from './inverse/varpro.js';
+export * from './render/temporal.js';
+export * from './audio/acoustics.js';

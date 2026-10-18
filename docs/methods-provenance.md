@@ -134,10 +134,10 @@ V10.1/V10.2, validated:
   The 2D disk identities (coverage derivative = in-pixel arc length,
   translation derivative = contour v.n) hold to five digits; the 3D
   normal speed is flagged wherever it appears, pending an oracle.
-- ○ Temporal history clamp: PROVISIONAL (toy 1D model only). Ghost
-  0.051 unclamped / 0.000 min-max / 0.003 variance-clip gamma=1;
+- ✔ Temporal history clamp: validated in the TS suite (was ○ PROVISIONAL).
+  Ghost 0.051 unclamped / 0.000 min-max / 0.003 variance-clip gamma=1;
   static-noise cost 0.046 -> 0.075 min-max, 0.053 variance gamma=1,
-  gamma=3 matches unclamped. Pending a render test.
+  gamma=3 matches unclamped.
 
 V10.3, validated:
 - ✔ Tetrahedron normals are O(h) (measured, linear), central
@@ -157,12 +157,39 @@ V10.3, validated:
   defined (infinities same sign: 0 apart; else infinite; NaN: infinite).
 - ✔ Rate-distortion: measured vs predicted MSE increase agree.
 
-V10.3, unvalidated (○):
-- ○ Error-state filter (quaternion + gyro bias): implemented per the
-  canonical equations; oracle against simulated rotations with a known
-  gyro bias is INCOMING and will be ported on arrival.
-- ○ SH white-environment oracle (E = pi): implemented and tested
-  internally; the owner's independent oracle is INCOMING.
+V10.4, validated:
+- ✔ Noise derivatives: quintic fade S, S', S'' vanish at 0 and 1;
+  analytic value-noise gradient matches central differences to O(h^2);
+  brute-force max ||grad N|| never exceeds sqrt(3)*1.875*R; fBm chain
+  rule with fade weights held constant (documented approximation).
+- ✔ Conservative primitives audit: every SDF node kind audited against
+  the |f| <= true distance table (src/math/conservative.ts); non-uniform
+  scale uses f(S^-1 p)*min_i s_i; ||grad f|| approx 1 on exact rows.
+- ✔ Terrain distance: heightfield f = (y-h)/sqrt(1+s^2); plane y=x gives
+  exact g/sqrt(2); brute-force conservative on rough fields.
+- ✔ Cost model: R_dot = 2WH f_r (1-rho_fov); grazing N = L ln(d0/eps)/gamma.
+  Safe over-relaxation (omega in [1,2), ball-overlap check, retreat on
+  failure): zero tunneling on warped fields, 33% fewer steps (53.3 vs 79.6).
+- ✔ Geometry gradients: dt*/dtheta and dn/dtheta match re-solved central
+  differences (1e-6, 1e-4); 2D disk silhouette identities hold.
+- ✔ VARPRO: full Golub-Pereyra Jacobian matches FD to 2e-9; Kaufman
+  error 8.4e-3 (solver loop only); merged rho*E coefficient; rank
+  deficiency detected not hidden; cutoff policy for 1e-7..1e-11.
+- ✔ Temporal stability: EMA variance alpha/(2-alpha); ghosting 0.051 ->
+  0.000 min-max / 0.003 variance-clip (was ○ PROVISIONAL, now validated
+  in the TS suite); Halton (2,3); critically damped spring exact;
+  polynomial exp 3.8e-14 on [0,2]; One Euro adaptive.
+- ✔ Acoustics: Monte Carlo volume -> (4/3) pi R^3, area -> 4 pi R^2;
+  Sabine/Eyring RT60; Householder A^T A = I; FDN -60 dB per RT60;
+  SN3D/ACN (W,Y,Z,X), azimuth 0 lands in X.
+
+V10.4, unvalidated (○):
+- ○ 3D silhouette normal-speed derivation: still UNVALIDATED (from
+  memory); throws until validated numerically. The 2D identities are ✔.
+- ○ SH white-environment oracle (E = pi): owner's independent oracle
+  INCOMING; port on arrival.
+- ○ Error-state filter vs simulated gyro bias: owner's oracle INCOMING;
+  port on arrival.
 
 DROPPED (do not implement): linear Kalman equations (error-state only),
 PCA as automatic semantic sliders (curated manual names only), separate

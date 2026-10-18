@@ -70,7 +70,8 @@ export function fadeSlopeMax(fk: number, delta: number): number {
 // determinism.ts (multiply/add only).
 // ---------------------------------------------------------------------------
 
-function latticeHash(xi: number, yi: number, zi: number, seed: number): number {
+/** Lattice corner hash (exported so noisegrad.ts uses identical corners). */
+export function latticeHash(xi: number, yi: number, zi: number, seed: number): number {
   let m = Math.imul(xi | 0, 374761393) ^ Math.imul(yi | 0, 668265263);
   m = Math.imul(m ^ Math.imul(zi | 0, 1440662683), 1013904223);
   m ^= seed | 0;

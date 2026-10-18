@@ -260,3 +260,39 @@ Every claim below points to a test or a reproducible number.
   match their normative forms exactly
   (AO = clamp(1-k sum 2^-i (h_i-f(p+h_i n))); s = clamp(min k f/t_i)),
   with larger k = harder shadow edges.
+
+## V10.4 "Integrate all" (1.3.0)
+
+Eight integrated subsystems; every claim points to a test or a
+reproducible number.
+
+- **Noise derivatives** (`src/math/noisegrad.ts`): analytic gradient of
+  3D value noise via the quintic fade (S, S', S'' documented; S' and S''
+  vanish at 0 and 1, tested); fBm chain rule with fade weights held
+  constant (documented approximation); bound ||grad N|| <= sqrt(3)*1.875*R
+  with brute-force verification that the max never exceeds it.
+- **Conservative audit** (`src/math/conservative.ts`): every SDF node
+  audited against |f| <= true distance; non-uniform scale uses the
+  conservative f(S^-1 p)*min_i s_i form (added to src/math/sdf.ts).
+- **Terrain distance** (`src/geo/terrain-dist.ts`): heightfield
+  f = (y-h)/sqrt(1+s^2); plane y=x gives exactly g/sqrt(2) (tested).
+- **Cost model + safe over-relaxation** (`src/math/overrelax.ts`):
+  ray budget R_dot = 2WH f_r (1-rho_fov); grazing-ray cost
+  N = L ln(d0/eps)/gamma. Over-relaxation with omega in [1,2), ball
+  overlap check, retreat on failure: zero tunneling, 33% fewer steps
+  (53.3 vs 79.6 mean on a warped field, tested).
+- **Geometry gradients** (`src/inverse/geograd.ts`): dt*/dtheta and
+  dn/dtheta match re-solved central differences; 2D silhouette disk
+  identities hold. The 3D silhouette normal speed is UNVALIDATED and
+  throws until validated.
+- **VARPRO** (`src/inverse/varpro.ts`): merged rho*E coefficient only;
+  c* via QR; full Golub-Pereyra Jacobian (2e-9 vs FD) for diagnostics,
+  Kaufman (8.4e-3) in the solver loop; rank cutoff policy 1e-7..1e-11.
+- **Temporal stability** (`src/render/temporal.ts`): Halton (2,3); EMA
+  with N_eff; min-max and variance-clip history clamps (ghost 0.051 ->
+  0.000/0.003 measured); One Euro filter; critically damped spring
+  with polynomial exp (3.8e-14) for determinism-critical paths.
+- **Acoustics** (`src/audio/acoustics.ts`): SDF Monte Carlo volume/area;
+  Sabine + Eyring RT60; FDN with Householder mixing (A^T A = I) and
+  coprime delays (-60 dB per RT60, tested); first-order ambisonics in
+  SN3D/ACN (W,Y,Z,X), azimuth 0 lands in X (tested).

@@ -70,6 +70,7 @@ export function localLipschitzBound(node: SdfNode, box: Aabb, u: Uniforms = {}):
     }
     case 'translate':
     case 'scale':
+    case 'scale3':
     case 'repeat':
       return localLipschitzBound(node.child, box, u);
     case 'twist': {

@@ -29,7 +29,8 @@ export type SdfNode =
   | { kind: 'twist'; k: SdfValue; child: SdfNode }
   | { kind: 'displace'; amp: SdfValue; freq: SdfValue; seed: number; child: SdfNode }
   | { kind: 'translate'; t: Vec3; child: SdfNode }
-  | { kind: 'scale'; s: SdfValue; child: SdfNode };
+  | { kind: 'scale'; s: SdfValue; child: SdfNode }
+  | { kind: 'scale3'; s: Vec3; child: SdfNode };
 
 export interface SdfHit {
   d: number;
@@ -207,6 +208,15 @@ export function evalSdf(node: SdfNode, p: Vec3, u: Uniforms = {}): SdfHit {
       const h = evalSdf(node.child, [p[0] / s, p[1] / s, p[2] / s], u);
       return { d: h.d * s, mat: h.mat };
     }
+    case 'scale3': {
+      // Non-uniform scale, CONSERVATIVE form: f(S^-1 p) * min_i s_i.
+      // From ||S x|| >= min_i s_i ||x||: scaling the evaluated distance
+      // by the smallest axis can only shrink it, never overestimate.
+      const sx = node.s[0] || 1, sy = node.s[1] || 1, sz = node.s[2] || 1;
+      const m = Math.min(sx, sy, sz);
+      const h = evalSdf(node.child, [p[0] / sx, p[1] / sy, p[2] / sz], u);
+      return { d: h.d * m, mat: h.mat };
+    }
   }
 }
 
@@ -234,6 +244,7 @@ export function collectUniforms(node: SdfNode, out: Set<string> = new Set()): Se
     case 'twist': grab(node.k); collectUniforms(node.child, out); break;
     case 'displace': grab(node.amp); grab(node.freq); collectUniforms(node.child, out); break;
     case 'scale': grab(node.s); collectUniforms(node.child, out); break;
+    case 'scale3': collectUniforms(node.child, out); break;
     case 'union': case 'intersect': node.children.forEach(c => collectUniforms(c, out)); break;
     case 'subtract': collectUniforms(node.a, out); collectUniforms(node.b, out); break;
     case 'repeat': node.c.forEach(grab); collectUniforms(node.child, out); break;
@@ -381,6 +392,13 @@ function emitNode(node: SdfNode, pExpr: string): { code: string; out: string } {
       const inner = emitNode(node.child, `(${pExpr} / ${glslVal(node.s)})`);
       return { code: `${inner.code}\nvec2 ${t} = vec2(${inner.out}.x * ${glslVal(node.s)}, ${inner.out}.y);`, out: t };
     }
+    case 'scale3': {
+      // Conservative non-uniform scale: evaluate at p/S, scale by min axis.
+      const sv = `vec3(${node.s[0].toFixed(6)}, ${node.s[1].toFixed(6)}, ${node.s[2].toFixed(6)})`;
+      const m = Math.min(node.s[0] || 1, node.s[1] || 1, node.s[2] || 1).toFixed(6);
+      const inner = emitNode(node.child, `(${pExpr} / ${sv})`);
+      return { code: `${inner.code}\nvec2 ${t} = vec2(${inner.out}.x * ${m}, ${inner.out}.y);`, out: t };
+    }
   }
 }
 
@@ -487,6 +505,10 @@ export function lipschitzBound(node: SdfNode, u: Uniforms = {}, opts: LipschitzO
     case 'translate':
       return lipschitzBound(node.child, u, opts);
     case 'scale':
+      return lipschitzBound(node.child, u, opts);
+    case 'scale3':
+      // Conservative form f(S^-1 p) * min s_i has gradient bounded by
+      // min s_i * (1/min s_i) * L_f = L_f.
       return lipschitzBound(node.child, u, opts);
     case 'repeat':
       // Documented assumption: the repeated primitive stays in its cell.
