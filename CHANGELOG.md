@@ -3,6 +3,48 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [1.0.1] - V10.1 (2026-10-18)
+
+Verified technical-review adoptions, all additive. No behavior removed;
+every V10 capability and test still stands.
+
+- **Sphere-tracing safety** (`src/math/sdf.ts`): under-relaxation
+  t += omega * f, omega default 0.85 (`SDF_OMEGA`), `stepScale` kept as
+  an alias. Per-operator Lipschitz documentation: primitives, union,
+  intersect, subtract, translate, and uniform scale preserve the true
+  SDF bound; exponential smin is a safe lower bound for 1-Lipschitz
+  children; twist, displacement, and repeat can overestimate and tunnel
+  at omega = 1. Unit-tested: a twisted thin slab that tunnels at
+  omega = 1.0 converges at omega = 0.85. GPU side (`src/render/raymarch.ts`):
+  the step scale is now a live `uStepScale` uniform with `setStepScale()`,
+  defaulting to 0.85; demo Tuning Deck exposes `uOmega` (0.5 to 1.0).
+- **Slider monotonicity** (`src/world/semantic.ts`): every
+  g(u) = a*u^2 + b*u + c_0 mapping is validated for monotonicity on
+  [0,1] at build time (fold-back iff b * (2a + b) < 0); u is clamped,
+  and fold-backs fail loudly with a console warning naming slider and
+  coefficient. All five shipped sliders validate monotone; tests cover
+  folding, monotone, and edge cases.
+- **Solver upgrade path** (`src/inverse/solvers.ts`): Levenberg-Marquardt
+  documented as the upgrade path for the sum-of-squares solvers, with
+  the math sketched (Gauss-Newton, damping schedule, dual numbers for
+  framework-free Jacobians). The working gradient-descent solvers are
+  unchanged. Header documents solver smoothness: solvers use the
+  unshadowed Lambert baseline, so shadow discontinuities never enter a
+  solve; finite-difference cost (one extra render per parameter per step)
+  is recorded as the reason geometry-scale solves need the
+  implicit-function-theorem path.
+- **Framing honesty** (`docs/mvp.md`, `docs/methods-provenance.md`):
+  the distinctive claim is now the combination (zero asset files,
+  polyglot core, distilling solves into closed-form math), not pillar
+  novelty. "KBs of formulas" is measured: the V10 experience is
+  34,478 bytes gzipped (11,174 page JS + 23,304 gen.wasm, plus ~5 KB
+  HTML), with the reproduce command in the docs. Neural-free stated
+  precisely: no ML framework at runtime; style weights ship as baked
+  constants in the distillation bundle and the MLP evaluator is off
+  when the bundle has none; the V10 math-first path is neural-free
+  outright. README's style-MLP line reconciled: ML tooling lives
+  foundry-side (Python) per the two-sided design.
+
 ## [1.0.0] - V10 (2026-10-18)
 
 The math-first MVP. The engine is defined by its own capability checklist

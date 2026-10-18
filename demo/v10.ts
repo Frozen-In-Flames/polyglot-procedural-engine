@@ -146,6 +146,7 @@ reg.define({ name: 'uBlendK', min: 1, max: 40, value: uniforms.uBlendK, step: 0.
 reg.define({ name: 'uTwistK', min: -0.8, max: 0.8, value: uniforms.uTwistK, step: 0.01, drives: 'twist radians per unit height' });
 reg.define({ name: 'uDisplaceAmp', min: 0, max: 0.8, value: uniforms.uDisplaceAmp, step: 0.01, drives: 'fbm displacement amplitude' });
 reg.define({ name: 'uDisplaceFreq', min: 0.5, max: 8, value: uniforms.uDisplaceFreq, step: 0.1, drives: 'fbm domain frequency' });
+reg.define({ name: 'uOmega', min: 0.5, max: 1.0, value: 0.85, step: 0.01, drives: 'sphere-tracing relaxation: t += omega * f' });
 for (const s of SEMANTIC_SLIDERS) {
   reg.define({ name: 'sem:' + s.name, min: 0, max: 1, value: 0.5, step: 0.01, drives: s.name + ': g(u) = a*u^2 + b*u + c0' });
 }
@@ -158,13 +159,15 @@ reg.onAnyChange((name, v) => {
       uniforms[k] = val;
       if (reg.has(k)) reg.set(k, val);
     }
+  } else if (name === 'uOmega') {
+    renderer.setStepScale(v);
   } else {
     uniforms[name] = v;
   }
   renderer.setUniforms(uniforms);
 });
 mountTuningDeck(deckEl, reg, [
-  { title: 'Raw math', params: ['uBlendK', 'uTwistK', 'uDisplaceAmp', 'uDisplaceFreq'] },
+  { title: 'Raw math', params: ['uBlendK', 'uTwistK', 'uDisplaceAmp', 'uDisplaceFreq', 'uOmega'] },
   { title: 'Semantic', params: SEMANTIC_SLIDERS.map(s => 'sem:' + s.name) },
 ]);
 

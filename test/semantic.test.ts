@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   evalTerm, evalSlider, evalSemantics, SEMANTIC_SLIDERS,
+  validateSlider, validateSemantics,
   blocks, stackBlocks, sineWarp, demoWorld, demoUniforms, live,
 } from '../src/world/semantic.js';
 import { evalSdf, collectUniforms } from '../src/math/sdf.js';
@@ -82,4 +83,35 @@ test('semantic: sineWarp changes the field', () => {
 test('semantic: live() creates uniform references', () => {
   const v = live('uFoo');
   assert.deepEqual(v, { uniform: 'uFoo' });
+});
+
+test('semantic: validateSlider catches a folding term', () => {
+  const bad = {
+    name: 'Bad',
+    description: 'folds',
+    terms: [{ coeff: 'x', a: 1, b: -1, c0: 0, note: '' }],
+  };
+  const issues = validateSlider(bad);
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0].slider, 'Bad');
+  assert.equal(issues[0].coeff, 'x');
+  // g(u) = u^2 - u folds at u = 0.5; the message says where.
+  assert.ok(issues[0].issue.includes('0.500'));
+});
+
+test('semantic: validateSlider passes monotone terms', () => {
+  const inc = { name: 'I', description: '', terms: [{ coeff: 'x', a: 0.3, b: 0.5, c0: 0, note: '' }] };
+  const dec = { name: 'D', description: '', terms: [{ coeff: 'x', a: -0.2, b: -0.1, c0: 1, note: '' }] };
+  const flat = { name: 'F', description: '', terms: [{ coeff: 'x', a: 0, b: 2, c0: 0, note: '' }] };
+  const edge = { name: 'E', description: '', terms: [{ coeff: 'x', a: 1, b: -2, c0: 0, note: '' }] };
+  assert.deepEqual(validateSlider(inc), []);
+  assert.deepEqual(validateSlider(dec), []);
+  assert.deepEqual(validateSlider(flat), []);
+  // derivative zero exactly at u = 1 is still monotone (non-strict).
+  assert.deepEqual(validateSlider(edge), []);
+});
+
+test('semantic: all shipped sliders validate monotone', () => {
+  const issues = validateSemantics(SEMANTIC_SLIDERS);
+  assert.deepEqual(issues, []);
 });

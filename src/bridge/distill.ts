@@ -165,7 +165,9 @@ export function validateDistillationBundle(doc: unknown): DistillationBundle {
 
 /** What the runtime needs: a MaterialSpec the renderer draws as-is, the
  *  uniform values buildMaterial would set (so callers can merge them),
- *  plus optional style weights for TsMlProvider. No ML at runtime. */
+ *  plus optional style weights for TsMlProvider. No ML framework at
+ *  runtime: the weights are baked constants, and MLP evaluation is off
+ *  when the bundle has none. */
 export interface AppliedDistillation {
   spec: MaterialSpec;
   uniforms: Record<string, number | number[]>;

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   evalSdf, sdfDist, marchRay, sdfNormal, sdfToGlsl, collectUniforms,
   hash3, valueNoise3, fbm3,
-  SDF_EPS, SDF_MAX_DIST, SDF_MAX_STEPS,
+  SDF_EPS, SDF_MAX_DIST, SDF_MAX_STEPS, SDF_OMEGA,
   type SdfNode,
 } from '../src/math/sdf.js';
 
@@ -191,4 +191,27 @@ test('sdf: glsl codegen emits map() with helpers and uniforms', () => {
 test('sdf: glsl codegen is deterministic', () => {
   const node: SdfNode = { kind: 'torus', R: 2, r: 0.5 };
   assert.equal(sdfToGlsl(node).glsl, sdfToGlsl(node).glsl);
+});
+
+test('sdf: under-relaxed march converges where omega=1 tunnels (twisted slab)', () => {
+  // Twist stretches the domain (local Lipschitz ~1 + |k| * radius), so the
+  // field overestimates and a full step jumps clean over this thin slab.
+  // omega = 0.85 shrinks every step and the march converges instead.
+  const f: SdfNode = { kind: 'twist', k: 2.0, child: { kind: 'box', b: [2, 0.06, 2] } };
+  const ro: [number, number, number] = [3.20398, -2.605153, 0.466583];
+  const rd: [number, number, number] = [-0.409412, 0.905501, 0.111582];
+  const tunneled = marchRay(f, ro, rd, {}, { omega: 1.0, maxSteps: 600 });
+  assert.equal(tunneled.hit, false);
+  const relaxed = marchRay(f, ro, rd, {}, { omega: 0.85, maxSteps: 600 });
+  assert.equal(relaxed.hit, true);
+  assert.ok(relaxed.dist < 10);
+});
+
+test('sdf: SDF_OMEGA is the march default and stepScale stays an alias', () => {
+  const s: SdfNode = { kind: 'sphere', r: 1 };
+  const a = marchRay(s, [0, 0, 5], [0, 0, -1]);
+  const b = marchRay(s, [0, 0, 5], [0, 0, -1], {}, { omega: SDF_OMEGA });
+  assert.ok(a.hit && b.hit);
+  assert.equal(a.steps, b.steps);
+  assert.equal(SDF_OMEGA, 0.85);
 });

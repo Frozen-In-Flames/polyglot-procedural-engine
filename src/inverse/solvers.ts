@@ -4,6 +4,22 @@
 // pipelines and NOT differentiable-rendering frameworks. See
 // docs/methods-provenance.md and the V10 section of INVERSE.md.
 //
+// SHADOWS AND SOLVER SMOOTHNESS (documented behavior):
+// The V10 raymarcher shades with penumbra-style soft shadows computed from
+// the field itself (smooth, continuous). The solvers below, however, use
+// the unshadowed Lambert baseline R_j = I * max(0, dot(n, l)) as their
+// forward model: shadow discontinuities therefore never enter a solve
+// loop and finite differences stay well-behaved. If shadows ever enter a
+// solve loop, they must be the soft penumbra form: hard shadow edges are
+// step discontinuities whose finite-difference gradients are unbounded.
+//
+// FINITE-DIFFERENCE COST: every gradient step costs 2n value evaluations
+// (central differences), i.e. one extra render per parameter per step.
+// That cost is the documented reason geometry-scale solves need the
+// implicit-function-theorem upgrade path (differentiate the surface
+// constraint f(x(theta), theta) = 0 instead of re-rendering): re-rendering
+// stops scaling when theta has hundreds of entries.
+//
 // The acceptance spec, implemented exactly:
 //
 //   Least-squares cost  L(theta) = 1/2 sum_j (R_j(theta) - y_j)^2
@@ -344,3 +360,34 @@ export function solveLightPosition(
     log,
   };
 }
+
+// ---------------------------------------------------------------------------
+// UPGRADE PATH (documented, not implemented): Levenberg-Marquardt.
+//
+// The shipped solvers above use plain gradient descent because it is
+// simple, robust, and fully inspectable. For sum-of-squares costs
+// L(theta) = 1/2 ||r(theta)||^2 there is a strictly better classical
+// upgrade that still needs no framework:
+//
+//   Gauss-Newton models r(theta + d) ~= r + J d with J = dr/dtheta and
+//   solves (J^T J) d = -J^T r each step: quadratic convergence near the
+//   solution, but it can diverge far away or on rank-deficient J.
+//
+//   Levenberg-Marquardt damps it: (J^T J + lambda I) d = -J^T r.
+//   Large lambda gives short gradient-descent-like steps (robust far from
+//   the solution); small lambda recovers Gauss-Newton (fast near it).
+//   Lambda adapts by the gain ratio rho = actual / predicted reduction:
+//   rho near 1 lowers lambda, rho small or negative raises it.
+//
+//   Jacobians without any framework: dual numbers. Represent each scalar
+//   as (value, derivative) with e^2 = 0; evaluating the residual
+//   r(theta + e * e_i) yields (r, J e_i) exactly by forward-mode automatic
+//   differentiation written in a dozen lines. No autodiff library, no
+//   neural pipeline, still classical numerical optimization.
+//
+// When to take this path: geometry-scale solves, where finite differences
+// cost one extra render per parameter per step (see the header note) and
+// the implicit-function-theorem gradient makes each evaluation precious.
+// Until then, gradient descent stays: it converges, it is honest about
+// local minima, and every step is readable.
+// ---------------------------------------------------------------------------

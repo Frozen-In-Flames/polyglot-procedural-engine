@@ -186,7 +186,7 @@ export function evalSdf(node: SdfNode, p: Vec3, u: Uniforms = {}): SdfHit {
       const n = fbm3(p[0] * freq, p[1] * freq, p[2] * freq, node.seed);
       const h = evalSdf(node.child, p, u);
       // Displacement relaxes the strict distance bound; the raymarcher
-      // compensates with a fractional step scale. Documented limit.
+      // compensates with under-relaxation (omega < 1). See Lipschitz notes.
       return { d: h.d + amp * (n - 0.5) * 2, mat: h.mat };
     }
     case 'translate':
@@ -383,6 +383,49 @@ export function sdfToGlsl(node: SdfNode): { glsl: string; uniforms: string[] } {
 // iterating until f(x) < epsilon (hit) or t exceeds the max distance.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Per-operator distance-bound behavior (Lipschitz notes).
+//
+// Sphere tracing is only safe when the field never overestimates the true
+// distance and the ray direction is unit length. Operators are classified
+// by what they guarantee:
+//
+// TRUE SDF (|grad f| = 1 almost everywhere; the step bound is tight):
+// - Primitives: sphere, box, torus, capsule, plane (closed-form distances).
+// - union (min), intersect (max), subtract (max(a, -b)): min/max of true
+//   SDFs stay 1-Lipschitz with a tight bound.
+// - translate: rigid shift, bound unchanged.
+// - scale (uniform, s > 0): the code evaluates f(p / s) * s, which is the
+//   exact distance field of the scaled shape.
+//
+// SAFE LOWER BOUND, not a true SDF (conservative; never overestimates when
+// its children are 1-Lipschitz, but |grad f| < 1 in blend zones, so the
+// march takes shorter steps than optimal):
+// - smoothUnion (exponential smin): smin(a, b) <= min(a, b) always, and the
+//   blend is 1-Lipschitz in its inputs, so with s = 0 exactly on the
+//   blended surface the field cannot exceed the true distance.
+//
+// CAN OVERESTIMATE (tunneling risk; this is what omega < 1 guards against):
+// - twist: the rotation angle varies with position, so the domain map
+//   stretches space (local Lipschitz constant ~1 + |k| * radius). The
+//   field value can exceed the true distance and a full step can jump
+//   clean over a thin surface.
+// - displace: f(p) + amp * noise(p) is not a lower bound; the noise moves
+//   the surface by up to amp, so the unperturbed distance overestimates.
+// - repeat: safe only while the repeated primitive stays strictly inside
+//   its cell; a primitive crossing a cell boundary reports a wrong distance.
+// - Non-uniform scale is not in this library; it would need the standard
+//   max-component bound, noted here so nobody adds it naively.
+//
+// Under-relaxation (t += omega * f with omega < 1) shrinks every step, so
+// even where an operator overestimates, the march stays inside the safe
+// region and converges instead of tunneling. SDF_OMEGA = 0.85 is the
+// default: cheap insurance on exact fields, required on warped ones.
+// Exposed on the Tuning Deck as uOmega.
+// ---------------------------------------------------------------------------
+
+/** Default under-relaxation for sphere tracing. See the Lipschitz notes. */
+export const SDF_OMEGA = 0.85;
 /** Hit threshold: the march stops when f(x) < SDF_EPS. Small enough to be
  *  visually exact at scene scale, large enough to terminate on grazing rays. */
 export const SDF_EPS = 1e-3;
@@ -402,15 +445,18 @@ export interface MarchResult {
   steps: number;
 }
 
-/** Sphere tracing on the CPU: march by the SDF value until epsilon-close. */
+/** Sphere tracing on the CPU: march by the SDF value until epsilon-close.
+ *  The step is under-relaxed (t += omega * f); omega = 1 is the textbook
+ *  march and tunnels on warped fields, omega = 0.85 (default) converges.
+ *  stepScale is kept as an alias for omega. */
 export function marchRay(
   node: SdfNode, ro: Vec3, rd: Vec3, u: Uniforms = {},
-  opts: { maxSteps?: number; maxDist?: number; eps?: number; stepScale?: number } = {},
+  opts: { maxSteps?: number; maxDist?: number; eps?: number; omega?: number; stepScale?: number } = {},
 ): MarchResult {
   const maxSteps = opts.maxSteps ?? SDF_MAX_STEPS;
   const maxDist = opts.maxDist ?? SDF_MAX_DIST;
   const eps = opts.eps ?? SDF_EPS;
-  const stepScale = opts.stepScale ?? 1.0;
+  const omega = opts.omega ?? opts.stepScale ?? SDF_OMEGA;
   let t = 0;
   for (let i = 0; i < maxSteps; i++) {
     const p: Vec3 = [ro[0] + rd[0] * t, ro[1] + rd[1] * t, ro[2] + rd[2] * t];
@@ -418,7 +464,7 @@ export function marchRay(
     if (h.d < eps) {
       return { hit: true, dist: t, mat: h.mat, pos: p, normal: sdfNormal(node, p, u), steps: i + 1 };
     }
-    t += h.d * stepScale;
+    t += h.d * omega;
     if (t > maxDist) break;
   }
   const miss: Vec3 = [ro[0] + rd[0] * t, ro[1] + rd[1] * t, ro[2] + rd[2] * t];

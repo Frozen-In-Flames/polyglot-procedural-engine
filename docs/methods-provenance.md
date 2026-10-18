@@ -4,6 +4,13 @@ Every method in the V10 build is implemented from first principles using
 classical, public-domain techniques. No patented pipeline is copied, and
 no third-party technology is embedded.
 
+The claim being made is the combination, not novelty in the pillars:
+zero asset files, a polyglot core, and distilling solves into closed-form
+math. Each technique below is public-domain prior art; the engine's
+contribution is shipping them as one artifact where the stored world is
+KBs of formulas (theta plus shader code), never as model files or
+imported assets.
+
 ## 1. SDF primitives, operators, and raymarching
 
 - Signed distance fields as implicit surface representations: public
@@ -42,6 +49,13 @@ patented rendering pipeline.
 - The two-sided foundry/runtime split is the engine's own architecture,
   documented in INVERSE.md: heavy compute may run once offline in the
   foundry; the runtime keeps zero new dependencies.
+- Neural-free, precisely: no ML framework at runtime. The runtime can
+  evaluate a small MLP (`src/bridge/distill.ts` carries optional
+  `heightStyle` weights for TsMlProvider), but learned weights ship as
+  baked constants inside the distillation bundle, never as model files,
+  and the MLP evaluator is optional and off when the bundle has no style
+  weights. The V10 math-first path (SDF + classical solvers) is
+  neural-free outright.
 
 ## 3. Semantic parameter mapping
 

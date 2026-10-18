@@ -15,7 +15,7 @@ languages working together to replace assets entirely.
 |---|---|---|
 | TypeScript | Host: scene graph, procedural materials, WebGL2 renderer, WebXR sessions, orchestration | Working |
 | C++ → WASM | Heavy procedural generation (seeded simplex noise, heightfields) called live from TS | Working, tested |
-| Python | ML generation: latent sampling, seeded style-MLP transfer over terrain, biome mixture weights; JSON-lines bridge any language can spawn. Audio: composes the chords + melody score | Working, tested; TS mirror verified bit-exact |
+| Python | Foundry-side: ML generation runs offline here only (latent sampling, seeded style-MLP transfer over terrain, biome mixture weights); the runtime never loads a model. Weights ship as baked constants in the distillation bundle, evaluated optionally by the runtime's small MLP path when present, off when not. JSON-lines bridge any language can spawn. Audio: composes the chords + melody score | Working, tested; TS mirror verified bit-exact |
 | C# (.NET 8) | `ScriptProvider`: scene scripts as C# classes via a name registry. Audio: composes the arp + hats score | Compiles clean (0 warnings); host wiring post-v1 |
 | Swift | `VisionOSProvider` (`SessionProvider`) + `VisionAudioDriver` (sparkle-ping score composer) | Interface-conformant; needs Xcode/visionOS SDK to compile |
 | Kotlin | `AndroidXRProvider` (`SessionProvider`) + `AndroidXrAudioDriver` (sub-pulse score composer) | Interface-conformant; device wiring post-v1 |

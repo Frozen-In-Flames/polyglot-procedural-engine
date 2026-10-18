@@ -31,7 +31,9 @@ export interface RaymarchOpts {
   /** Sky gradient top/bottom colors. */
   skyTop?: Vec3;
   skyBottom?: Vec3;
-  /** Step scale under 1 relaxes the march for displaced fields. */
+  /** Under-relaxation factor (t += omega * f), default 0.85. Uploaded as
+   *  the uStepScale uniform every frame, so the Tuning Deck drives it live
+   *  with no shader rebuild. */
   stepScale?: number;
 }
 
@@ -74,7 +76,6 @@ export function buildRaymarchFragment(
   const steps = opts.steps ?? RAYMARCH_STEPS;
   const maxDist = opts.maxDist ?? RAYMARCH_MAX_DIST;
   const eps = opts.eps ?? RAYMARCH_EPS;
-  const stepScale = opts.stepScale ?? 1.0;
   const skyTop = opts.skyTop ?? [0.12, 0.2, 0.35];
   const skyBottom = opts.skyBottom ?? [0.02, 0.03, 0.06];
   const uniDecls = sdfUniforms.map(n => `uniform float ${n};`).join('\n');
@@ -90,6 +91,7 @@ uniform float uTanFov;
 uniform float uAspect;
 uniform vec3 uLightDir;
 uniform vec3 uLightColor;
+uniform float uStepScale;
 uniform vec3 uMatColor[8];
 uniform float uMatSpec[8];
 uniform int uDebug;
@@ -136,7 +138,7 @@ vec2 raymarch(vec3 ro, vec3 rd){
     vec3 p = ro + rd * t;
     vec2 h = map(p);
     if (h.x < ${eps}) return vec2(t, h.y);
-    t += h.x * ${stepScale};
+    t += h.x * uStepScale;
     m = h.y;
     if (t > ${maxDist}) break;
   }
@@ -223,6 +225,8 @@ export class RaymarchRenderer {
   private materials: RaymarchMaterial[] = DEFAULT_MATERIALS;
   private lightDir: Vec3 = [0.5, 0.8, 0.3];
   private lightColor: Vec3 = [1.0, 0.95, 0.88];
+  /** Under-relaxation factor, uploaded as uStepScale every frame. */
+  private stepScale = 0.85;
 
   constructor(private canvas: HTMLCanvasElement) {
     const gl = canvas.getContext('webgl2', { antialias: false });
@@ -236,6 +240,7 @@ export class RaymarchRenderer {
     const gl = this.gl;
     const { glsl, uniforms } = sdfToGlsl(root);
     this.sdfUniformNames = uniforms;
+    this.stepScale = opts.stepScale ?? 0.85;
     const frag = buildRaymarchFragment(glsl, uniforms, opts);
     const program = gl.createProgram()!;
     gl.attachShader(program, compileShader(gl, gl.VERTEX_SHADER, VERT_SRC));
@@ -269,6 +274,11 @@ export class RaymarchRenderer {
   setLight(dir: Vec3, color: Vec3): void {
     this.lightDir = dir;
     this.lightColor = color;
+  }
+
+  /** Live under-relaxation for the marcher; the Tuning Deck drives this. */
+  setStepScale(v: number): void {
+    this.stepScale = Math.min(1, Math.max(0.1, v));
   }
 
   /** 0 = shaded, 1 = depth, 2 = normal. Shows the raymarcher really
@@ -325,6 +335,7 @@ export class RaymarchRenderer {
     gl.uniform3fv(this.uni('uMatColor'), colors);
     gl.uniform1fv(this.uni('uMatSpec'), specs);
     gl.uniform1i(this.uni('uDebug'), this.debugMode);
+    set1('uStepScale', this.stepScale);
     for (const n of this.sdfUniformNames) set1(n, this.uniforms[n] ?? 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }

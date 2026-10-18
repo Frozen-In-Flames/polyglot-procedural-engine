@@ -9,6 +9,15 @@
 //
 // Composable blocks let creators stack math pieces (e.g. a sine warp on
 // a sphere SDF) without touching the underlying formulas.
+//
+// MONOTONICITY: every g(u) = a*u^2 + b*u + c0 term is validated at build
+// time (validateSemantics, run on SEMANTIC_SLIDERS at module load). A term
+// folds back on itself when g'(u) = 2au + b changes sign inside (0, 1),
+// i.e. b * (2a + b) < 0; the slider would then move a coefficient one way
+// and then the other as u rises, which reads as broken. Fold-backs fail
+// loudly (console warning naming slider and coefficient) and are
+// documented, never silently shipped. u itself is always clamped to [0,1]
+// by evalTerm.
 import type { SdfNode, SdfValue, Uniforms } from '../math/sdf.js';
 import type { Vec3 } from '../math/vec.js';
 
@@ -49,6 +58,47 @@ export function evalSemantics(sliders: SemanticSlider[], values: Record<string, 
     const u = values[s.name] ?? 0.5;
     Object.assign(out, evalSlider(s, u));
   }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Monotonicity validation. g(u) = a*u^2 + b*u + c0 has g'(u) = 2au + b, a
+// line, so it folds back on (0, 1) exactly when the derivative changes sign
+// strictly inside: b * (2a + b) < 0. A zero at an endpoint is still
+// monotone (non-strict) and passes.
+// ---------------------------------------------------------------------------
+
+export interface MonotonicityIssue {
+  slider: string;
+  coeff: string;
+  /** Human-readable reason, e.g. which term folds and where. */
+  issue: string;
+}
+
+/** Check one slider's terms; returns an issue per folding term. */
+export function validateSlider(s: SemanticSlider): MonotonicityIssue[] {
+  const out: MonotonicityIssue[] = [];
+  for (const t of s.terms) {
+    const d0 = t.b;
+    const d1 = 2 * t.a + t.b;
+    if (d0 * d1 < 0) {
+      const fold = -t.b / (2 * t.a);
+      out.push({
+        slider: s.name,
+        coeff: t.coeff,
+        issue: `g'(u) = 2*${t.a}*u + ${t.b} changes sign inside (0,1) ` +
+          `(fold at u=${fold.toFixed(3)}); the slider moves ${t.coeff} ` +
+          `one way then back as u rises`,
+      });
+    }
+  }
+  return out;
+}
+
+/** Validate a whole slider set; empty array means every term is monotone. */
+export function validateSemantics(sliders: SemanticSlider[]): MonotonicityIssue[] {
+  const out: MonotonicityIssue[] = [];
+  for (const s of sliders) out.push(...validateSlider(s));
   return out;
 }
 
@@ -96,6 +146,15 @@ export const SEMANTIC_SLIDERS: SemanticSlider[] = [
     ],
   },
 ];
+
+// Build-time monotonicity gate: the shipped sliders must never fold back.
+// Any issue fails loudly here (console warning naming slider + coefficient)
+// instead of shipping a broken-feeling control.
+for (const issue of validateSemantics(SEMANTIC_SLIDERS)) {
+  console.warn(
+    `[semantic] non-monotone slider mapping: "${issue.slider}" -> ${issue.coeff}: ${issue.issue}`,
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Composable blocks. Each block is a named SDF constructor; modifiers wrap

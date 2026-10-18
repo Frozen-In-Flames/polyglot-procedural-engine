@@ -1,10 +1,29 @@
 # V10 "Math-First MVP": the engine's own capability checklist
 
 Version 1.0.0 is the minimum viable product of the Polyglot Procedural
-Engine, defined entirely in the engine's own terms. Each capability below
-states what the engine does, how the math achieves it, its honest limits,
-and what is future work. Zero asset dependence throughout: every item is
-realized in code at runtime, never by importing a file.
+Engine, defined entirely in the engine's own terms. The distinctive claim
+is the combination, not novelty in the individual pillars: zero asset
+files, a polyglot core (TypeScript, C++, Python, C#, Swift, Kotlin
+mirrors), and distillation of solves into closed-form math. SDF
+raymarching, least squares, and macro controls are each long-established;
+what is new is shipping them together as one artifact where the stored
+world is KBs of formulas: theta (the solved parameters) plus the shader
+code, and nothing else. Each capability below states what the engine
+does, how the math achieves it, its honest limits, and what is future
+work. Zero asset dependence throughout: every item is realized in code
+at runtime, never by importing a file.
+
+## Measured: KBs of formulas
+
+The whole V10 experience, gzipped, measured 2026-10-18:
+- v10 page JS: 11,174 bytes gz
+- gen.wasm: 23,304 bytes gz
+- Total: 34,478 bytes gz (about 34.5 KB), plus the HTML page (~5 KB)
+
+Re-measure with: `gzip -c dist-demo/assets/v10-*.js dist-demo/gen/gen.wasm | wc -c`
+
+That is the stored artifact: a parameter vector and shader code, small
+enough to read, audit, and transmit anywhere.
 
 ## 1. SDF math rendering
 
@@ -17,11 +36,16 @@ through the field and shades the surface it finds.
 primitives (sphere as ||x|| - r, box, torus, capsule, plane), booleans
 (union as min(f1, f2), exponential smooth-min for blends, subtract,
 intersect), domain warping (repeat, twist, displacement), and seeded
-value-noise/fbm. Rendering is sphere tracing: t_{k+1} = t_k + f(o + t_k d),
-iterating until f(x) < epsilon (a hit) or t exceeds max distance. Epsilon
-(1e-3), max distance (100), and max steps (128) are documented constants,
-and the same AST compiles to GLSL so the CPU reference and the GPU shader
-evaluate the identical field. The raymarcher (`src/render/raymarch.ts`)
+value-noise/fbm. Rendering is sphere tracing with under-relaxation:
+t_{k+1} = t_k + omega * f(o + t_k d), omega = 0.85 (default), iterating
+until f(x) < epsilon (a hit) or t exceeds max distance. Epsilon (1e-3),
+max distance (100), and max steps (128) are documented constants, and
+relaxation exists because warped operators (twist, displacement) can
+overestimate the distance and tunnel at omega = 1; see the per-operator
+Lipschitz notes in `src/math/sdf.ts`. The same AST compiles to GLSL so
+the CPU reference and the GPU shader evaluate the identical field, with
+the step scale as a live `uStepScale` uniform the Tuning Deck drives
+(uOmega). The raymarcher (`src/render/raymarch.ts`)
 returns depth and normal per ray, the normal from central differences of f,
 and computes soft shadows and ambient occlusion from the field itself.
 
@@ -51,6 +75,13 @@ deterministic and logs iterations, residual, and RMSE, so the solve is
 visible, never a black box. Bad fits are reported as failed (RMSE or R^2
 gates), never shipped silently. See `src/inverse/solvers.ts` and the V10
 section of INVERSE.md.
+
+**Neural-free, precisely.** No ML framework at runtime. Where the
+foundry fits style weights, they ship as baked constants inside the
+distillation bundle, never as model files; the small MLP evaluator is
+optional and stays off when the bundle has no style weights. The V10
+math-first path above (SDF + classical solvers) is neural-free outright:
+nothing in it learns, and nothing in it can learn.
 
 **Honest limits.** The lighting model is Lambertian with known sample
 positions and normals: no shadows, no interreflection, no specular in the
