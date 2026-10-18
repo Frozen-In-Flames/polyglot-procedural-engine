@@ -65,3 +65,32 @@ patented rendering pipeline.
   needed. The engine's contribution is applying the pattern to procedural
   world math with transparent, inspectable mappings (each semantic slider
   documents exactly which math variables it drives).
+
+## 4. Determinism audit (V10.2)
+
+Which paths are bit-exact and which are tolerance-checked, recorded so
+the claim "deterministic" always points at a mechanism:
+
+- Bit-exact, integer: the PCG RXS-M-XS hash (`src/math/determinism.ts`).
+  All arithmetic is mod 2^32 via Math.imul and >>> 0; tested against
+  reference vectors from an independent exact implementation of the
+  published formulas (test/determinism.test.ts). Width-independent.
+- Bit-exact, float64: the Python foundry <-> TypeScript bridge
+  (distillDetail bit-exact, tested). Nothing on this path narrows.
+- Bit-exact, float32: TS <-> C++/WASM <-> GLSL <-> Swift <-> Kotlin.
+  Canonical width is float32; every operation on an exact path is
+  wrapped in f32() (Math.fround) so exactness holds at the first
+  multiply. "Bit-exact" is meaningless without the width; the width is
+  the claim.
+- Tolerance-checked: GLSL highp evaluation (float32, tolerance-checked
+  per INVERSE.md); Math.sin/cos in domain warps (twist); the polynomial
+  sinPoly/cosPoly replacements (|error| <= 1e-9 after range reduction,
+  tested) for exact paths that need a transcendental.
+- Never bit-exact across languages: anything through libm
+  transcendentals without the polynomial replacement, and FMA-fused
+  evaluations (FMA changes rounding; exact paths use fixed-order
+  polynomials instead).
+
+The canonical cross-language hash is the PCG variant; all new noise
+(valueNoisePcg, fbmBandLimited) uses it. The legacy hash3 (Math.imul)
+is fine and stays.

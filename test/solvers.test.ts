@@ -148,3 +148,35 @@ test('solvers: fitMaterialCoeffs flags a bad basis honestly', () => {
   assert.ok(!fit.passed);
   assert.ok(fit.r2 < 0.7);
 });
+
+test('solvers: conditioning diagnostic reports singular values in the log', () => {
+  // theta = [rho, E] on pixel = rho*E*(n.l): exact null direction.
+  const n = [0, 0, 1];
+  const samples = [0.5, 0.8, 0.3].map((s) => ({ n, s }));
+  const y = samples.map((sm) => 0.7 * 1.3 * sm.s);
+  const L = (theta: number[]): number => {
+    let c = 0;
+    for (let j = 0; j < samples.length; j++) {
+      const r = theta[0] * theta[1] * samples[j].s - y[j];
+      c += r * r;
+    }
+    return 0.5 * c;
+  };
+  const r = (theta: number[]): number[] =>
+    samples.map((sm, j) => theta[0] * theta[1] * sm.s - y[j]);
+  const { log } = gradientDescent([0.5, 1.0], L, {
+    eta: 0.1, maxIter: 200, tol: 1e-12, residuals: r,
+  });
+  assert.ok(log.singularValues && log.singularValues.length === 2);
+  assert.ok(log.conditionNumber !== undefined && log.conditionNumber > 1e6);
+  assert.ok(log.conditioningWarnings && log.conditioningWarnings.length > 0);
+});
+
+test('solvers: Tikhonov mu shrinks the solution toward zero', () => {
+  const L = (theta: number[]): number => (theta[0] - 5) * (theta[0] - 5);
+  const plain = gradientDescent([0], L, { eta: 0.1, maxIter: 500, tol: 1e-14 });
+  const reg = gradientDescent([0], L, { eta: 0.1, maxIter: 500, tol: 1e-14, mu: 1 });
+  assert.ok(Math.abs(plain.theta[0] - 5) < 1e-6);
+  // min (t-5)^2 + t^2 -> t = 2.5.
+  assert.ok(Math.abs(reg.theta[0] - 2.5) < 1e-3);
+});

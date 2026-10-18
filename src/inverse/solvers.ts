@@ -33,6 +33,7 @@
 // Deterministic and inspectable: no randomness anywhere, every solve logs
 // iterations and residual so the solve is visible, never a black box.
 import type { Vec3 } from '../math/vec.js';
+import { finiteJacobian, diagnoseConditioning } from './conditioning.js';
 
 export interface SolveLog {
   /** Iterations actually run. */
@@ -43,6 +44,13 @@ export interface SolveLog {
   rmse: number;
   /** Residual sampled every logEvery steps (plus the final value). */
   history: number[];
+  /** Singular values of the column-normalized Jacobian at the solution
+   *  (present when opts.residuals was given). */
+  singularValues?: number[];
+  /** Condition number kappa = sigma_max / sigma_min. */
+  conditionNumber?: number;
+  /** Loud warnings for near-zero singular directions. */
+  conditioningWarnings?: string[];
 }
 
 export interface GdOpts {
@@ -56,6 +64,14 @@ export interface GdOpts {
   /** Optional constraint projection applied after each update, e.g.
    *  non-negativity for light intensities (documented per solver). */
   project?: (theta: number[]) => number[];
+  /** Residual vector r(theta) for the conditioning diagnostic. When
+   *  given, the SVD of the finite-difference Jacobian at the solution
+   *  is reported in the log (singular values, condition number,
+   *  warnings). */
+  residuals?: (theta: number[]) => number[];
+  /** Tikhonov weight mu: min ||r||^2 + mu ||theta||^2 (Gamma = I).
+   *  The documented fix for ill-conditioned solves. */
+  mu?: number;
 }
 
 /** Finite-difference step for gradient estimation, documented choice:
@@ -88,6 +104,9 @@ function finiteGrad(
  *   theta^{(t+1)} = theta^{(t)} - eta * grad L(theta),
  * with grad L estimated by central finite differences of the value
  * function L alone. Deterministic, inspectable, no randomness.
+ * With opts.mu, minimizes L + mu ||theta||^2 (Tikhonov, Gamma = I).
+ * With opts.residuals, the conditioning diagnostic runs at the solution
+ * and its singular values, condition number, and warnings join the log.
  */
 export function gradientDescent(
   theta0: number[],
@@ -99,29 +118,44 @@ export function gradientDescent(
   const tol = opts.tol ?? 1e-9;
   const logEvery = opts.logEvery ?? 25;
   const project = opts.project;
+  const mu = opts.mu ?? 0;
+  const Lreg = mu > 0
+    ? (theta: number[]) => L(theta) + mu * theta.reduce((s, t) => s + t * t, 0)
+    : L;
   let theta = theta0.slice();
   if (project) theta = project(theta);
-  let prev = L(theta);
+  let prev = Lreg(theta);
   const history: number[] = [prev];
   let iterations = 0;
   for (let i = 0; i < maxIter; i++) {
-    const grad = finiteGrad(L, theta);
+    const grad = finiteGrad(Lreg, theta);
     for (let k = 0; k < theta.length; k++) theta[k] -= eta * grad[k];
     if (project) theta = project(theta);
-    const cur = L(theta);
+    const cur = Lreg(theta);
     iterations = i + 1;
     if ((i + 1) % logEvery === 0) history.push(cur);
     if (Math.abs(prev - cur) < tol) break;
     prev = cur;
     if (!isFinite(cur)) break;
   }
-  const final = L(theta);
+  const final = Lreg(theta);
   history.push(final);
   const n = Math.max(1, theta0.length);
-  return {
-    theta,
-    log: { iterations, residual: final, rmse: Math.sqrt((2 * final) / n), history },
+  const log: SolveLog = {
+    iterations,
+    residual: final,
+    rmse: Math.sqrt((2 * final) / n),
+    history,
   };
+  if (opts.residuals) {
+    const J = finiteJacobian(opts.residuals, theta);
+    const report = diagnoseConditioning(J);
+    log.singularValues = report.sigma;
+    log.conditionNumber = report.kappa;
+    log.conditioningWarnings = report.warnings;
+    for (const w of report.warnings) console.warn(`[solver] ${w}`);
+  }
+  return { theta, log };
 }
 
 // ---------------------------------------------------------------------------
@@ -367,23 +401,29 @@ export function solveLightPosition(
 // The shipped solvers above use plain gradient descent because it is
 // simple, robust, and fully inspectable. For sum-of-squares costs
 // L(theta) = 1/2 ||r(theta)||^2 there is a strictly better classical
-// upgrade that still needs no framework:
+// upgrade that still needs no framework. Exact step:
 //
-//   Gauss-Newton models r(theta + d) ~= r + J d with J = dr/dtheta and
-//   solves (J^T J) d = -J^T r each step: quadratic convergence near the
-//   solution, but it can diverge far away or on rank-deficient J.
+//   (J^T J + lambda diag(J^T J)) delta = -J^T r,   theta <- theta + delta,
+//   residual r(theta), Jacobian J = dr/dtheta.
 //
-//   Levenberg-Marquardt damps it: (J^T J + lambda I) d = -J^T r.
-//   Large lambda gives short gradient-descent-like steps (robust far from
-//   the solution); small lambda recovers Gauss-Newton (fast near it).
-//   Lambda adapts by the gain ratio rho = actual / predicted reduction:
-//   rho near 1 lowers lambda, rho small or negative raises it.
+// Large lambda gives short gradient-descent-like steps (robust far from
+// the solution); small lambda recovers Gauss-Newton (fast near it).
+// Lambda adapts by the gain ratio rho = actual / predicted reduction.
 //
-//   Jacobians without any framework: dual numbers. Represent each scalar
-//   as (value, derivative) with e^2 = 0; evaluating the residual
-//   r(theta + e * e_i) yields (r, J e_i) exactly by forward-mode automatic
-//   differentiation written in a dozen lines. No autodiff library, no
-//   neural pipeline, still classical numerical optimization.
+// Jacobians without any framework: dual numbers. Represent each scalar
+// as (value, derivative) with e^2 = 0; evaluating the residual
+// r(theta + e * e_i) yields (r, J e_i) exactly by forward-mode automatic
+// differentiation written in a dozen lines. No autodiff library, no
+// neural pipeline, still classical numerical optimization.
+//
+// HIT-POINT GRADIENT (for the future geometry-parameter solver path):
+// from the surface constraint f(o + t* d; theta) = 0, implicit
+// differentiation gives
+//   dt*/dtheta = -(df/dtheta) / (grad f . d).
+// This differentiates the hit distance through the field without
+// re-rendering: the upgrade that makes geometry-scale solves affordable.
+// The V10.2 solvers still use finite differences; this documents the
+// exact formula the upgrade implements.
 //
 // When to take this path: geometry-scale solves, where finite differences
 // cost one extra render per parameter per step (see the header note) and

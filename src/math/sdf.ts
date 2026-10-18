@@ -9,6 +9,7 @@
 // All techniques here are classical public mathematics; see
 // docs/methods-provenance.md.
 import type { Vec3 } from './vec.js';
+import { NOISE_LIPSCHITZ } from './bandlimit.js';
 
 /** A scalar that is either baked in or driven live by a named uniform. */
 export type SdfValue = number | { uniform: string };
@@ -384,48 +385,116 @@ export function sdfToGlsl(node: SdfNode): { glsl: string; uniforms: string[] } {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Per-operator distance-bound behavior (Lipschitz notes).
+// Per-operator Lipschitz bounds and step relaxation.
 //
-// Sphere tracing is only safe when the field never overestimates the true
-// distance and the ray direction is unit length. Operators are classified
-// by what they guarantee:
+// Sphere tracing is safe when the step never exceeds the true distance.
+// The V10.2 marcher advances t_{k+1} = t_k + f(o + t_k d) / L, i.e. the
+// user-facing omega is defined as omega = 1 / L, computed from the
+// per-operator bounds below and defaulting to the V10.1 value 0.85 when
+// no bound is known. omega is clamped to at most 1/L; exceeding it needs
+// the explicit allowUnsafeOmega opt-in, so a slider can never silently
+// reintroduce tunneling.
 //
-// TRUE SDF (|grad f| = 1 almost everywhere; the step bound is tight):
-// - Primitives: sphere, box, torus, capsule, plane (closed-form distances).
-// - union (min), intersect (max), subtract (max(a, -b)): min/max of true
-//   SDFs stay 1-Lipschitz with a tight bound.
-// - translate: rigid shift, bound unchanged.
-// - scale (uniform, s > 0): the code evaluates f(p / s) * s, which is the
-//   exact distance field of the scaled shape.
+// GLOBAL vs LOCAL: the composed bound multiplies through deep trees and
+// is safe but pessimistic (more steps than needed). Where a tighter local
+// bound is computable it is documented per operator; the marcher uses the
+// global composed bound because it is one number valid for the whole
+// march, cheap to compute once, and the reference-march test validates
+// that it never tunnels on warped or displaced fields.
 //
-// SAFE LOWER BOUND, not a true SDF (conservative; never overestimates when
-// its children are 1-Lipschitz, but |grad f| < 1 in blend zones, so the
-// march takes shorter steps than optimal):
-// - smoothUnion (exponential smin): smin(a, b) <= min(a, b) always, and the
-//   blend is 1-Lipschitz in its inputs, so with s = 0 exactly on the
-//   blended surface the field cannot exceed the true distance.
-//
-// CAN OVERESTIMATE (tunneling risk; this is what omega < 1 guards against):
-// - twist: the rotation angle varies with position, so the domain map
-//   stretches space (local Lipschitz constant ~1 + |k| * radius). The
-//   field value can exceed the true distance and a full step can jump
-//   clean over a thin surface.
-// - displace: f(p) + amp * noise(p) is not a lower bound; the noise moves
-//   the surface by up to amp, so the unperturbed distance overestimates.
-// - repeat: safe only while the repeated primitive stays strictly inside
-//   its cell; a primitive crossing a cell boundary reports a wrong distance.
-// - Non-uniform scale is not in this library; it would need the standard
-//   max-component bound, noted here so nobody adds it naively.
-//
-// Under-relaxation (t += omega * f with omega < 1) shrinks every step, so
-// even where an operator overestimates, the march stays inside the safe
-// region and converges instead of tunneling. SDF_OMEGA = 0.85 is the
-// default: cheap insurance on exact fields, required on warped ones.
-// Exposed on the Tuning Deck as uOmega.
+// Per-operator bounds (L_f = bound of the child field):
+// - Primitives (sphere, box, torus, capsule, plane): 1 (true SDF).
+// - union/intersect/subtract (min/max): max(L_a, L_b).
+// - smoothUnion (polynomial smin): max(L_a, L_b). The blend gradient is a
+//   convex combination of the children's gradients, so the bound stays
+//   max(L_a, L_b), never the sum.
+// - translate: L_f. Uniform scale s: L_f (f(p/s)*s is the exact field).
+// - twist (angle k*y): L_f * (1 + |k| * r_max). LOCAL form at point p:
+//   L(p) = L_f * (1 + |k| * sqrt(px^2 + pz^2)). The global bound needs
+//   r_max, the largest radial distance in the marched box: a bounded-region
+//   requirement, documented here. Default extent 8 world units.
+// - displace (f + A * noise): L_f + A * L_N * sum_k c_k g_k w_k with the
+//   octave amplitudes c_k, frequencies g_k, fade weights w_k, and base
+//   noise Lipschitz L_N (see bandlimit.ts lipschitzDisplace). When the
+//   fade is distance-driven, the slope term A * sum_k c_k |dw_k/dt| is
+//   added (finite: the smoothstep fade has zero slope at its joints).
+// - repeat: L_f, valid only while the repeated primitive stays strictly
+//   inside its cell (documented assumption).
 // ---------------------------------------------------------------------------
 
 /** Default under-relaxation for sphere tracing. See the Lipschitz notes. */
 export const SDF_OMEGA = 0.85;
+
+/** Options for lipschitzBound. */
+export interface LipschitzOpts {
+  /** Largest radial distance the bound must hold inside (twist needs it).
+   *  Default 8 world units; documented bounded-region requirement. */
+  extent?: number;
+  /** Angular pixel size, for the fade slope term when band-limiting. */
+  pixelAngle?: number;
+}
+
+/**
+ * Composed Lipschitz bound for an SDF tree (global, safe, pessimistic).
+ * Returns NaN when the tree contains an operator with no known bound;
+ * the marcher then falls back to SDF_OMEGA. Uniform-valued parameters
+ * are read from u (missing uniforms read as 0).
+ */
+export function lipschitzBound(node: SdfNode, u: Uniforms = {}, opts: LipschitzOpts = {}): number {
+  const extent = opts.extent ?? 8;
+  switch (node.kind) {
+    case 'sphere':
+    case 'box':
+    case 'torus':
+    case 'capsule':
+    case 'plane':
+      return 1;
+    case 'union':
+    case 'intersect':
+    case 'smoothUnion': {
+      let m = 0;
+      for (const c of node.children) {
+        const l = lipschitzBound(c, u, opts);
+        if (!Number.isFinite(l)) return NaN;
+        m = Math.max(m, l);
+      }
+      return m;
+    }
+    case 'subtract': {
+      const la = lipschitzBound(node.a, u, opts);
+      const lb = lipschitzBound(node.b, u, opts);
+      if (!Number.isFinite(la) || !Number.isFinite(lb)) return NaN;
+      return Math.max(la, lb);
+    }
+    case 'translate':
+      return lipschitzBound(node.child, u, opts);
+    case 'scale':
+      return lipschitzBound(node.child, u, opts);
+    case 'repeat':
+      // Documented assumption: the repeated primitive stays in its cell.
+      return lipschitzBound(node.child, u, opts);
+    case 'twist': {
+      const lc = lipschitzBound(node.child, u, opts);
+      if (!Number.isFinite(lc)) return NaN;
+      const k = Math.abs(val(node.k, u));
+      return lc * (1 + k * extent);
+    }
+    case 'displace': {
+      const lc = lipschitzBound(node.child, u, opts);
+      if (!Number.isFinite(lc)) return NaN;
+      const amp = Math.abs(val(node.amp, u));
+      const freq = Math.abs(val(node.freq, u));
+      // fbm3 structure: 4 octaves, amplitude 0.5^k / 1.875, frequency
+      // 2.03^k, output in [0,1], centered and scaled by 2 in evalSdf.
+      const norm1875 = 1.875;
+      let s = 0;
+      for (let k = 0; k < 4; k++) s += ((0.5 ** k) / norm1875) * 2.03 ** k;
+      return lc + amp * 2 * NOISE_LIPSCHITZ * freq * s;
+    }
+    default:
+      return NaN;
+  }
+}
 /** Hit threshold: the march stops when f(x) < SDF_EPS. Small enough to be
  *  visually exact at scene scale, large enough to terminate on grazing rays. */
 export const SDF_EPS = 1e-3;
@@ -446,19 +515,52 @@ export interface MarchResult {
 }
 
 /** Sphere tracing on the CPU: march by the SDF value until epsilon-close.
- *  The step is under-relaxed (t += omega * f); omega = 1 is the textbook
- *  march and tunnels on warped fields, omega = 0.85 (default) converges.
- *  stepScale is kept as an alias for omega. */
+ *
+ *  Step relaxation (V10.2): t_{k+1} = t_k + f(o + t_k d) / L, where L is
+ *  the Lipschitz bound from lipschitzBound(). The user-facing omega is
+ *  defined as omega = 1/L and defaults to it; when no bound is known it
+ *  defaults to SDF_OMEGA (0.85). An explicit omega is clamped to at most
+ *  1/L unless allowUnsafeOmega is set: without the opt-in, no caller can
+ *  silently reintroduce tunneling. stepScale is kept as an alias for
+ *  omega. The ray direction must be unit length (asserted at entry).
+ *  pixelAngle enables band-limiting: the hit epsilon scales as
+ *  eps(t) = t * pixelAngle (see bandlimit.ts). */
 export function marchRay(
   node: SdfNode, ro: Vec3, rd: Vec3, u: Uniforms = {},
-  opts: { maxSteps?: number; maxDist?: number; eps?: number; omega?: number; stepScale?: number } = {},
+  opts: {
+    maxSteps?: number; maxDist?: number; eps?: number;
+    omega?: number; stepScale?: number;
+    /** Explicit Lipschitz bound (skips lipschitzBound). */
+    lipschitz?: number;
+    /** Radial extent for the twist bound. Default 8. */
+    extent?: number;
+    /** Opt in to omega above 1/L. Without it, omega clamps to 1/L. */
+    allowUnsafeOmega?: boolean;
+    /** Angular pixel size (radians) for distance-scaled epsilon. */
+    pixelAngle?: number;
+  } = {},
 ): MarchResult {
+  const rl = Math.hypot(rd[0], rd[1], rd[2]);
+  if (Math.abs(rl - 1) > 1e-6) {
+    throw new Error(`marchRay: ray direction must be unit length, got |d| = ${rl}`);
+  }
   const maxSteps = opts.maxSteps ?? SDF_MAX_STEPS;
   const maxDist = opts.maxDist ?? SDF_MAX_DIST;
-  const eps = opts.eps ?? SDF_EPS;
-  const omega = opts.omega ?? opts.stepScale ?? SDF_OMEGA;
+  const baseEps = opts.eps ?? SDF_EPS;
+  const L = opts.lipschitz ?? lipschitzBound(node, u, { extent: opts.extent });
+  const boundKnown = Number.isFinite(L) && (L as number) > 0;
+  const omegaCap = boundKnown ? Math.min(1, 1 / (L as number)) : SDF_OMEGA;
+  let omega = opts.omega ?? opts.stepScale ?? omegaCap;
+  if (!opts.allowUnsafeOmega && omega > omegaCap) {
+    console.warn(
+      `[sdf] omega ${omega} exceeds 1/L = ${omegaCap.toFixed(4)}; clamped ` +
+        `(pass allowUnsafeOmega to opt in to tunneling risk)`,
+    );
+    omega = omegaCap;
+  }
   let t = 0;
   for (let i = 0; i < maxSteps; i++) {
+    const eps = opts.pixelAngle != null ? Math.max(baseEps, t * opts.pixelAngle) : baseEps;
     const p: Vec3 = [ro[0] + rd[0] * t, ro[1] + rd[1] * t, ro[2] + rd[2] * t];
     const h = evalSdf(node, p, u);
     if (h.d < eps) {

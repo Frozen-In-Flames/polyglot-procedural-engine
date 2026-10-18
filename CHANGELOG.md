@@ -3,6 +3,49 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [1.1.0] - V10.2 "Faithful forward model" (2026-10-18)
+
+New shading families, solvers, and subsystems (minor version per semver).
+Every claim points to a test or a reproducible number; the identity suite
+is green before the tag.
+
+- **Step relaxation from Lipschitz bounds** (`src/math/sdf.ts`):
+  t_{k+1} = t_k + f/L; omega = 1/L from composed per-operator bounds,
+  0.85 when no bound is known; explicit omega clamps to 1/L without the
+  `allowUnsafeOmega` opt-in. Unit-length ray direction asserted at
+  marcher entry. Validated against a fine-step reference march on
+  warped and displaced fields.
+- **Band-limiting** (`src/math/bandlimit.ts`): distance-scaled hit
+  epsilon eps(t) = t * delta; smoothstep fBm octave fade (zero slope at
+  the joints, finite dw/dt); displaced-noise bound
+  L <= L_f + A L_N sum (2a)^k w_k; PCG-based value noise for all new
+  noise paths.
+- **Forward model and loss** (`src/inverse/forward.ts`,
+  `src/inverse/losses.ts`): sRGB transfer contract with linearize
+  helper (fit in linear light); Lanczos resolve with weights summing
+  to 1; Cook-Torrance GGX (floored alpha, n.l, n.v; D integrates to 1);
+  9-coefficient SH diffuse (constant white gives E = pi; Lambertian
+  out = rho E / pi); structural L2 + texture-statistics loss (Hann
+  window, epsilon in log spectrum, histogram W2).
+- **Conditioning** (`src/inverse/conditioning.ts`, `src/inverse/solvers.ts`):
+  SVD of the column-normalized finite-difference Jacobian at each
+  solution, singular values/condition number/warnings in the solve log;
+  albedo-intensity and generalized bas-relief null directions tested as
+  identities; Tikhonov mu; LM exact step and the hit-point gradient
+  dt*/dtheta documented as the upgrade path.
+- **Model selection** (`src/inverse/selection.ts`): AIC/BIC with
+  effective sample size (resolve-filter correlation discounted and
+  documented), PSNR, L1 proximal soft-threshold, rate-distortion
+  reports (gzipped bytes vs PSNR).
+- **Determinism** (`src/math/determinism.ts`): PCG RXS-M-XS hash with
+  Math.imul throughout (published reference vectors), quintic fade,
+  polynomial sin/cos to 1e-9, canonical float32 via f32(); audit table
+  in docs/methods-provenance.md.
+- **XR costs** (`src/render/foveation.ts`, `src/render/raymarch.ts`):
+  foveated radial step-budget falloff in the shader; rotation-only late
+  reprojection and radial lens distortion as documented math; AO and
+  soft shadows reconciled to their normative forms.
+
 ## [1.0.1] - V10.1 (2026-10-18)
 
 Verified technical-review adoptions, all additive. No behavior removed;

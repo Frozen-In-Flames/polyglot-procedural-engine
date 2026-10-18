@@ -2,15 +2,16 @@
 //
 // Renders SDF math-worlds directly: no meshes, no textures, no baked
 // lighting. Each frame the fragment shader sphere-traces the scene's
-// distance field (t_{k+1} = t_k + f(o + t_k d)), shades from the SDF
-// gradient, and computes soft shadows plus ambient occlusion from further
-// SDF samples. All techniques are classical public mathematics; see
-// docs/methods-provenance.md.
+// distance field (t_{k+1} = t_k + f(o + t_k d) / L, the Lipschitz-relaxed
+// march; the step scale rides the uStepScale uniform, clamped to 1/L),
+// shades from the SDF gradient, and computes soft shadows plus ambient
+// occlusion from further SDF samples. All techniques are classical public
+// mathematics; see docs/methods-provenance.md.
 //
 // The SDF tree compiles to GLSL once (sdfToGlsl); per-frame parameter
 // changes ride uniforms, so the Tuning Deck drives the render live with
 // no shader rebuilds.
-import { sdfToGlsl, type SdfNode, type Uniforms } from '../math/sdf.js';
+import { sdfToGlsl, lipschitzBound, type SdfNode, type Uniforms } from '../math/sdf.js';
 import type { Vec3 } from '../math/vec.js';
 
 export const RAYMARCH_STEPS = 96;
@@ -92,6 +93,7 @@ uniform float uAspect;
 uniform vec3 uLightDir;
 uniform vec3 uLightColor;
 uniform float uStepScale;
+uniform float uFoveate;
 uniform vec3 uMatColor[8];
 uniform float uMatSpec[8];
 uniform int uDebug;
@@ -107,6 +109,9 @@ vec3 sdfNormal(vec3 p){
 }
 
 float softShadow(vec3 ro, vec3 rd, float mint, float maxt, float k){
+  // Penumbra form: s = clamp(min_i (k f(p + t_i l) / t_i), 0, 1).
+  // Larger k = harder edges. Smooth in the field, so finite differences
+  // stay well-behaved if shadows ever enter a solve loop.
   float res = 1.0;
   float t = mint;
   for (int i = 0; i < 24; i++){
@@ -120,21 +125,25 @@ float softShadow(vec3 ro, vec3 rd, float mint, float maxt, float k){
 }
 
 float ambientOcclusion(vec3 p, vec3 n){
+  // AO = clamp(1 - k sum_i 2^{-i} (h_i - f(p + h_i n)), 0, 1, with k = 2.
+  // Each tap compares the sample height h_i against the field value along
+  // the normal; occluded taps (f < h_i) accumulate with halving weight.
   float occ = 0.0;
-  float sca = 1.0;
+  float w = 1.0;
   for (int i = 0; i < 5; i++){
-    float h = 0.01 + 0.12 * float(i) / 4.0;
+    float h = 0.01 + 0.14 * float(i);
     float d = map(p + n * h).x;
-    occ += (h - d) * sca;
-    sca *= 0.95;
+    occ += w * (h - d);
+    w *= 0.5;
   }
   return clamp(1.0 - 2.0 * occ, 0.0, 1.0);
 }
 
-vec2 raymarch(vec3 ro, vec3 rd){
+vec2 raymarch(vec3 ro, vec3 rd, int budget){
   float t = 0.0;
   float m = 0.0;
   for (int i = 0; i < ${steps}; i++){
+    if (i >= budget) break;
     vec3 p = ro + rd * t;
     vec2 h = map(p);
     if (h.x < ${eps}) return vec2(t, h.y);
@@ -145,11 +154,20 @@ vec2 raymarch(vec3 ro, vec3 rd){
   return vec2(-1.0, m);
 }
 
+int foveaBudget(vec2 frag){
+  // N_steps(e) = N_0 / (1 + e/e_2), e_2 = 2.3 deg. Full budget in the
+  // fovea, fewer steps peripherally: math-side XR cost control.
+  if (uFoveate < 0.5) return ${steps};
+  vec2 c = (frag - 0.5 * uResolution) / uResolution.y;
+  float eDeg = atan(length(c) * uTanFov) * 57.29578;
+  return int(float(${steps}) / (1.0 + eDeg / 2.3));
+}
+
 void main(){
   vec2 uv = (gl_FragCoord.xy * 2.0 - uResolution) / uResolution.y;
   vec3 rd = normalize(uv.x * uCamRight + uv.y * uCamUp + (1.0 / uTanFov) * uCamFwd);
   vec3 ro = uCamPos;
-  vec2 res = raymarch(ro, rd);
+  vec2 res = raymarch(ro, rd, foveaBudget(gl_FragCoord.xy));
   vec3 col;
   if (res.x > 0.0){
     vec3 p = ro + rd * res.x;
@@ -227,6 +245,14 @@ export class RaymarchRenderer {
   private lightColor: Vec3 = [1.0, 0.95, 0.88];
   /** Under-relaxation factor, uploaded as uStepScale every frame. */
   private stepScale = 0.85;
+  /** 1/L cap for the current scene; explicit omega clamps to it. */
+  private omegaCap = 1;
+  /** Opt-in to exceed the 1/L cap. */
+  private unsafeOmega = false;
+  /** Scene root, kept to recompute the 1/L cap when uniforms change. */
+  private root: SdfNode | null = null;
+  /** Foveated step budget on/off. */
+  private foveate = false;
 
   constructor(private canvas: HTMLCanvasElement) {
     const gl = canvas.getContext('webgl2', { antialias: false });
@@ -241,6 +267,8 @@ export class RaymarchRenderer {
     const { glsl, uniforms } = sdfToGlsl(root);
     this.sdfUniformNames = uniforms;
     this.stepScale = opts.stepScale ?? 0.85;
+    this.root = root;
+    this.updateOmegaCap();
     const frag = buildRaymarchFragment(glsl, uniforms, opts);
     const program = gl.createProgram()!;
     gl.attachShader(program, compileShader(gl, gl.VERTEX_SHADER, VERT_SRC));
@@ -265,6 +293,7 @@ export class RaymarchRenderer {
 
   setUniforms(u: Uniforms): void {
     Object.assign(this.uniforms, u);
+    this.updateOmegaCap();
   }
 
   setMaterials(mats: RaymarchMaterial[]): void {
@@ -276,9 +305,36 @@ export class RaymarchRenderer {
     this.lightColor = color;
   }
 
-  /** Live under-relaxation for the marcher; the Tuning Deck drives this. */
+  /** Live under-relaxation for the marcher; the Tuning Deck drives this.
+   *  Clamped to 1/L for the current scene unless unsafe mode is on. */
   setStepScale(v: number): void {
-    this.stepScale = Math.min(1, Math.max(0.1, v));
+    const capped = this.unsafeOmega ? v : Math.min(v, this.omegaCap);
+    if (capped !== v) {
+      console.warn(
+        `[raymarch] step scale ${v} exceeds 1/L = ${this.omegaCap.toFixed(4)}; clamped`,
+      );
+    }
+    this.stepScale = Math.min(1, Math.max(0.1, capped));
+  }
+
+  /** Opt in to step scales above 1/L (tunneling risk accepted). */
+  setUnsafeOmega(flag: boolean): void {
+    this.unsafeOmega = flag;
+  }
+
+  /** Foveated step budget: full steps in the fovea, fewer peripherally. */
+  setFoveation(enabled: boolean): void {
+    this.foveate = enabled;
+  }
+
+  /** Recompute the 1/L cap from the scene and current uniforms. */
+  private updateOmegaCap(): void {
+    if (!this.root) return;
+    const L = lipschitzBound(this.root, this.uniforms);
+    this.omegaCap = Number.isFinite(L) && L > 0 ? Math.min(1, 1 / L) : 0.85;
+    if (!this.unsafeOmega && this.stepScale > this.omegaCap) {
+      this.stepScale = this.omegaCap;
+    }
   }
 
   /** 0 = shaded, 1 = depth, 2 = normal. Shows the raymarcher really
@@ -336,6 +392,7 @@ export class RaymarchRenderer {
     gl.uniform1fv(this.uni('uMatSpec'), specs);
     gl.uniform1i(this.uni('uDebug'), this.debugMode);
     set1('uStepScale', this.stepScale);
+    set1('uFoveate', this.foveate ? 1 : 0);
     for (const n of this.sdfUniformNames) set1(n, this.uniforms[n] ?? 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }

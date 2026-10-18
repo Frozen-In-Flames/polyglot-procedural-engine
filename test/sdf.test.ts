@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   evalSdf, sdfDist, marchRay, sdfNormal, sdfToGlsl, collectUniforms,
-  hash3, valueNoise3, fbm3,
+  hash3, valueNoise3, fbm3, lipschitzBound,
   SDF_EPS, SDF_MAX_DIST, SDF_MAX_STEPS, SDF_OMEGA,
   type SdfNode,
 } from '../src/math/sdf.js';
@@ -197,21 +197,53 @@ test('sdf: under-relaxed march converges where omega=1 tunnels (twisted slab)', 
   // Twist stretches the domain (local Lipschitz ~1 + |k| * radius), so the
   // field overestimates and a full step jumps clean over this thin slab.
   // omega = 0.85 shrinks every step and the march converges instead.
+  // The omega=1 case needs the explicit unsafe opt-in: without it, omega
+  // clamps to 1/L and the march is safe by construction.
   const f: SdfNode = { kind: 'twist', k: 2.0, child: { kind: 'box', b: [2, 0.06, 2] } };
   const ro: [number, number, number] = [3.20398, -2.605153, 0.466583];
   const rd: [number, number, number] = [-0.409412, 0.905501, 0.111582];
-  const tunneled = marchRay(f, ro, rd, {}, { omega: 1.0, maxSteps: 600 });
+  const tunneled = marchRay(f, ro, rd, {}, { omega: 1.0, maxSteps: 600, allowUnsafeOmega: true });
   assert.equal(tunneled.hit, false);
   const relaxed = marchRay(f, ro, rd, {}, { omega: 0.85, maxSteps: 600 });
   assert.equal(relaxed.hit, true);
   assert.ok(relaxed.dist < 10);
 });
 
-test('sdf: SDF_OMEGA is the march default and stepScale stays an alias', () => {
+test('sdf: omega clamps to 1/L without the unsafe opt-in', () => {
+  const f: SdfNode = { kind: 'twist', k: 2.0, child: { kind: 'box', b: [2, 0.06, 2] } };
+  const ro: [number, number, number] = [3.20398, -2.605153, 0.466583];
+  const rd: [number, number, number] = [-0.409412, 0.905501, 0.111582];
+  // L = 1 * (1 + 2*8) = 17, so 1/L < 0.06: the clamped march is safe.
+  const safe = marchRay(f, ro, rd, {}, { omega: 1.0, maxSteps: 600 });
+  assert.equal(safe.hit, true);
+});
+
+test('sdf: default omega is 1/L from the Lipschitz bound', () => {
   const s: SdfNode = { kind: 'sphere', r: 1 };
+  // L = 1 for a sphere, so the default march uses omega = 1.
   const a = marchRay(s, [0, 0, 5], [0, 0, -1]);
-  const b = marchRay(s, [0, 0, 5], [0, 0, -1], {}, { omega: SDF_OMEGA });
+  const b = marchRay(s, [0, 0, 5], [0, 0, -1], {}, { omega: 1 });
   assert.ok(a.hit && b.hit);
   assert.equal(a.steps, b.steps);
+  // An explicit tighter omega still works (and stepScale stays an alias).
+  const c = marchRay(s, [0, 0, 5], [0, 0, -1], {}, { stepScale: 0.85 });
+  assert.ok(c.hit && c.steps > a.steps);
   assert.equal(SDF_OMEGA, 0.85);
+});
+
+test('sdf: marchRay asserts unit-length ray direction', () => {
+  const s: SdfNode = { kind: 'sphere', r: 1 };
+  assert.throws(() => marchRay(s, [0, 0, 5], [0, 0, -2]), /unit length/);
+});
+
+test('sdf: lipschitzBound composes per-operator bounds', () => {
+  const s: SdfNode = { kind: 'sphere', r: 1 };
+  assert.equal(lipschitzBound(s), 1);
+  const u: SdfNode = { kind: 'union', children: [s, { kind: 'box', b: [1, 1, 1] }] };
+  assert.equal(lipschitzBound(u), 1);
+  const tw: SdfNode = { kind: 'twist', k: 2.0, child: s };
+  assert.equal(lipschitzBound(tw, {}, { extent: 8 }), 17);
+  const d: SdfNode = { kind: 'displace', amp: 0.5, freq: 1.0, seed: 7, child: s };
+  const ld = lipschitzBound(d);
+  assert.ok(ld > 1 && Number.isFinite(ld));
 });

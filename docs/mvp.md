@@ -209,3 +209,54 @@ returning depth and normal per ray; (3) Lambert shading as the baseline;
 (4) a target ("this pixel brighter") handed to the inverse solver, which
 drags the light position until the render matches, with the iteration log
 showing convergence. The Tuning Deck drives the same world live beside it.
+
+---
+
+## V10.2 "Faithful forward model" (1.1.0)
+
+New shading families, solvers, and subsystems: a minor-version change.
+Every claim below points to a test or a reproducible number.
+
+- **Step relaxation from Lipschitz bounds** (`src/math/sdf.ts`): the
+  marcher advances t += f/L with omega = 1/L from composed per-operator
+  bounds (primitives 1, min/max, twist 1+|k|r_max, displacement
+  L_f + A L_N sum (2a)^k w_k), defaulting to 0.85 when no bound is
+  known. Explicit omega clamps to 1/L without the `allowUnsafeOmega`
+  opt-in. Validated against a brute-force fine-step reference march on
+  warped and displaced fields (test/bandlimit.test.ts).
+- **Band-limiting** (`src/math/bandlimit.ts`): hit epsilon scales as
+  eps(t) = t * delta (delta = 2 tan(fov/2)/H); fBm octaves fade with a
+  smoothstep (zero slope at the joints) once past quarter-Nyquist.
+  Far surfaces stop shimmering; step counts drop with distance (tested).
+- **Forward model and loss** (`src/inverse/forward.ts`,
+  `src/inverse/losses.ts`): sRGB transfer contract (fit in linear
+  light; encode/decode round-trips tested), Lanczos resolve
+  (weights sum to 1, tested), Cook-Torrance GGX with floors (D
+  integrates to 1 over the hemisphere, tested), 9-coefficient SH
+  diffuse (constant white gives E = pi, tested; Lambertian out is
+  rho E / pi), structural L2 plus texture-statistics loss
+  (log power-spectrum rings with Hann window + histogram W2; converges
+  on noise textures where pixel L2 does not, tested).
+- **Conditioning diagnostics** (`src/inverse/conditioning.ts`,
+  `src/inverse/solvers.ts`): SVD of the column-normalized
+  finite-difference Jacobian at every solution, reported in the solve
+  log with warnings on near-zero directions. The albedo-intensity null
+  direction and the generalized bas-relief identity are tested as
+  identities. Tikhonov mu available as the documented fix.
+- **Model selection** (`src/inverse/selection.ts`): AIC/BIC with
+  effective sample size (discounted for the resolve filter's
+  correlation window, documented), PSNR, L1 proximal soft-threshold,
+  and rate-distortion reports (bytes vs PSNR) that extend the KBs of
+  formulas measurement.
+- **Determinism** (`src/math/determinism.ts`): PCG RXS-M-XS hash
+  (Math.imul throughout; reference vectors tested), quintic fade,
+  polynomial sin/cos to 1e-9, canonical float32 enforcement via
+  f32(). The audit table lives in docs/methods-provenance.md section 4.
+- **XR cost control** (`src/render/foveation.ts`,
+  `src/render/raymarch.ts`): radial step-budget falloff
+  N(e) = N_0/(1+e/2.3deg) in the raymarcher; rotation-only late
+  reprojection and radial lens distortion as documented math.
+- **Renderer reconciliation**: ambient occlusion and soft shadows now
+  match their normative forms exactly
+  (AO = clamp(1-k sum 2^-i (h_i-f(p+h_i n))); s = clamp(min k f/t_i)),
+  with larger k = harder shadow edges.
