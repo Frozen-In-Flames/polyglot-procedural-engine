@@ -3,6 +3,27 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [1.8.1] - Robust-estimation follow-up: GM tightness, NIS under outliers (2026-10-19)
+
+Owner follow-up oracle (docs/oracles/test_robust_followup.py) ported to TS;
+495/495 suite green (492 prior + 3 new, tests first). Three findings.
+(a) GM statistical efficiency vs tightness c on clean noise: c=3.0 and c=6.0
+cost nothing measurable vs l2, but tight c=1.0 costs 35-68% efficiency (it
+redescends on clean Gaussian residuals too); efficiency improves
+monotonically as c loosens. (b) Hardest condition from near starts: direct
+GM gets 0.0% failures at every c vs 16.7% for Huber, and tighter c gives
+smaller median errors on dirty data. Together: tight c wins on dirty data
+and costs on clean data; c=3.0 stays the balanced default. (c) NIS change
+detector at perfect prediction: plain residuals false-alarm massively under
+outliers (z in the thousands); trimmed residuals (|r| < 3s) cut the
+false-alarm z by 250-350x and hold the band on clutter, but the smooth
+flanks of the specular lobe leak through (z=7.78 on specular, 32.99 on
+spec+clutter). Trimming is now the default in the JIT change-detector path
+(nisChange/nisStatistic, src/inverse/jit.ts); the v1.5.0 true-jump
+detection still passes with it. Honest limits: Lambertian toy; 100/48/50
+trials per check; trimmed NIS does not fully solve smooth outlier
+structures.
+
 ## [1.8.0] - Dimensional layering: 2D, 2.5D, 3D, 4D in one field of view (2026-10-19)
 
 New module src/scene/layers.ts: every scene element declares a dimensionality

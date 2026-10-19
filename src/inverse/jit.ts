@@ -486,28 +486,60 @@ export function kalmanLinearUpdate(
   return { t, P };
 }
 
+function medianOf(v: number[]): number {
+  const s = v.slice().sort((a, b) => a - b);
+  const h = Math.floor(s.length / 2);
+  return s.length % 2 ? s[h] : 0.5 * (s[h - 1] + s[h]);
+}
+
+export interface NisResult {
+  /** NIS on the kept residuals. */
+  nis: number;
+  /** Number of kept residuals (m for the untrimmed computation). */
+  m: number;
+  /** z = (NIS - m) / sqrt(2m); flag a scene change when z > 6. */
+  z: number;
+}
+
 /**
- * Normalized innovation squared (change-detection statistic), Woodbury form:
- * NIS = r^T r / s2 - q^T Ainf^{-1} q, q = J^T r / s2,
- * Ainf = J^T J / s2 + P^{-1}.  z = (NIS - m) / sqrt(2m); flag when z > 6.
+ * Change-detection statistic with robust trimming (default on), Woodbury form:
+ * keep residuals with |r| < trimK * s, s = max(sqrt(sigma2), 1.4826*MAD(r));
+ * NIS = rk^T rk / s2 - q^T Ainf^{-1} q, q = Jk^T rk / s2,
+ * Ainf = Jk^T Jk / s2 + P^{-1} on the kept set; z = (NIS - m)/sqrt(2m).
+ * Trimming (v1.8.1) stops outlier pixels from false-alarming the detector at
+ * perfect prediction: the plain computation false-alarms on heavy
+ * specular/clutter while the trimmed z stays in band. Pass trimK = 0 for
+ * the legacy untrimmed computation.
  */
-export function nisStatistic(
+export function nisChange(
   y: Vec,
   thetaPred: Vec,
   P: Mat,
   Rfun: (th: Vec) => Vec,
   Jfun: (th: Vec) => Mat,
   sigma2: number,
-): number {
+  trimK = 3,
+): NisResult {
   const p = thetaPred.length;
   const Rv = Rfun(thetaPred);
   const Jm = Jfun(thetaPred);
   const r = y.map((v, j) => v - Rv[j]);
+  let keep: boolean[] | null = null;
+  if (trimK > 0) {
+    const med = medianOf(r);
+    const mad = medianOf(r.map((v) => Math.abs(v - med)));
+    const s = Math.max(Math.sqrt(sigma2), 1.4826 * mad);
+    const cut = trimK * s;
+    keep = r.map((v) => Math.abs(v) < cut);
+  }
   const PInv = invertSPD(P);
   const Ainf: Mat = Array.from({ length: p }, () => new Array(p).fill(0));
   const q = new Array(p).fill(0);
   let r2 = 0;
+  let m = 0;
   for (let j = 0; j < y.length; j++) {
+    if (keep !== null && !keep[j]) continue;
+    m++;
     r2 += r[j] * r[j];
     const row = Jm[j];
     for (let a = 0; a < p; a++) {
@@ -519,7 +551,27 @@ export function nisStatistic(
   const w = solveSPD(Ainf, q);
   let qMq = 0;
   for (let a = 0; a < p; a++) qMq += q[a] * w[a];
-  return r2 / sigma2 - qMq;
+  const nis = r2 / sigma2 - qMq;
+  return { nis, m, z: (nis - m) / Math.sqrt(2 * m) };
+}
+
+/**
+ * Normalized innovation squared (change-detection statistic), Woodbury form:
+ * NIS = r^T r / s2 - q^T Ainf^{-1} q, q = J^T r / s2,
+ * Ainf = J^T J / s2 + P^{-1}.  z = (NIS - m) / sqrt(2m); flag when z > 6.
+ * Since v1.8.1 the residuals are trimmed by default (see nisChange);
+ * pass trimK = 0 for the legacy untrimmed computation.
+ */
+export function nisStatistic(
+  y: Vec,
+  thetaPred: Vec,
+  P: Mat,
+  Rfun: (th: Vec) => Vec,
+  Jfun: (th: Vec) => Mat,
+  sigma2: number,
+  trimK = 3,
+): number {
+  return nisChange(y, thetaPred, P, Rfun, Jfun, sigma2, trimK).nis;
 }
 
 // ---------------------------------------------------------------------------

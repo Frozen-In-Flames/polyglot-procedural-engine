@@ -98,6 +98,68 @@ Ridge check (oracle section 5, cap 15deg, 24 trials): centered prior beats
 zero-centered prior (median relative error printed in the test log); the
 zero-centered prior biases, the centered one does not.
 
+## 4. v1.8.1 follow-up: GM tightness, hardest-condition near starts, NIS under outliers
+
+Ground truth: docs/oracles/test_robust_followup.py (the owner's follow-up;
+it imports the head of robust_cost_head2head.py).
+
+### GM statistical efficiency vs tightness c (clean noise, near starts)
+
+RMS error ratio vs l2 per (az, el, I, A), 100 trials:
+
+| c | az | el | I | A |
+|---|---|---|---|---|
+| 1.0 | 1.46 | 1.68 | 1.35 | 1.61 |
+| 1.5 | 1.17 | 1.34 | 1.11 | 1.27 |
+| 3.0 | 0.99 | 1.06 | 0.99 | 1.05 |
+| 6.0 | 0.99 | 1.00 | 0.99 | 1.01 |
+
+Tight GM redescends on clean-data residuals too (|u| > 1 is about 32% of
+Gaussian draws), so c=1.0 costs 35-68% efficiency. The default c=3.0 costs
+nothing measurable; c=6.0 sits at l2 efficiency. This corrects the v1.7.0
+note that "robustness does not cost accuracy on clean data": it does not
+at the default, but it does if c is too tight.
+
+### Hardest condition, near starts, GM by c (Huber reference)
+
+specular 1.0 + clutter 25%, 48 trials:
+
+| method | fail% | median|az| | median|I| |
+|---|---|---|---|
+| huber | 16.7 | 0.0139 | 0.0231 |
+| gm c=1.0 | 0.0 | 0.0017 | 0.0084 |
+| gm c=1.5 | 0.0 | 0.0022 | 0.0106 |
+| gm c=3.0 | 0.0 | 0.0044 | 0.0181 |
+
+Direct GM dominates Huber here (0.0% vs 16.7% fail), and on dirty data
+tighter redescending wins: median errors shrink as c tightens. Together
+with the efficiency table this is the complete c story: tight c wins on
+dirty data and costs on clean data; c=3.0 is the balanced default.
+
+### NIS change detector under outliers (perfect prediction)
+
+Median z over 50 trials at theta_pred = truth (no real scene change),
+alarm threshold z > 6:
+
+| condition | plain z | trimmed (|u|<3) z |
+|---|---|---|
+| clean | 0.2 | -0.78 |
+| specular 0.6 | 1995.0 | 7.78 |
+| clutter 15% | 5950.6 | 1.57 |
+| spec 1.0 + clutter 25% | 11577.6 | 32.99 |
+
+Trimming (|r| < 3s, s = max(sigma, 1.4826*MAD)) cuts the false-alarm z by
+250-350x and fully holds the band on clutter, but the smooth flanks of the
+specular lobe (|r| just under 3s) pass the trim and leave systematic bias,
+so trimmed z stays above the band on specular (7.78) and spec+clutter
+(32.99). Trimming is now the default in the JIT change-detector path
+(nisChange/nisStatistic in src/inverse/jit.ts, trimK = 3; pass 0 for the
+legacy plain computation): it strictly dominates plain on false alarms,
+and the v1.5.0 true-jump detection still passes with it. Honest
+limitation: trimming does not fully solve smooth outlier structures;
+future work is a tighter trim schedule or modeling the specular lobe
+including the saturation clip.
+
 ## Limits
 
 - The head-to-head is the Lambertian toy; the specular generator is
@@ -105,9 +167,15 @@ zero-centered prior biases, the centered one does not.
   saturation clip. Real scenes add shadows and interreflection that will
   dominate these numbers.
 - 24 trials per cell (the owner runs 150 in his oracle); the TS port is a
-  structural check with deterministic seeds.
+  structural check with deterministic seeds. The v1.8.1 follow-up uses
+  100/48/50 trials for checks (a)/(b)/(c).
 - GM is non-convex: on clean/far starts every estimator, including l2,
-  occasionally strands at the terminator kink (2/24 for l2). Robustness
-  does not cost accuracy on clean data (no method worse than l2 there).
+  occasionally strands at the terminator kink (2/24 for l2).
+- Tight GM (c=1.0) costs 35-68% statistical efficiency on clean data
+  (v1.8.1 check (a)); the default c=3.0 does not. Robustness is not free
+  if c is too tight.
+- Trimmed NIS still false-alarms (marginally) on smooth specular
+  outliers: median z 7.78 on specular 0.6, 32.99 on spec+clutter, vs the
+  z > 6 alarm threshold (v1.8.1 check (c)).
 - The QR trigger threshold tau = 1e-3 is the owner's pre-chosen value,
   untuned on real data.
