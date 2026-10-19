@@ -3,6 +3,30 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [1.7.0] - Robust estimation upgrades (2026-10-19)
+
+Owner validation tracks (docs/oracles/conditional_qr_oracle.py,
+docs/oracles/robust_cost_head2head.py) ported to TS; 476/476 suite green
+(460 prior + 16 new). Two questions answered with measured head-to-heads.
+(1) Mute vs explain: Geman-McClure (redescending) joins Huber (convex) as
+IRLS Gauss-Newton options, plus GNC-annealed GM and huber-then-GM. On the
+JIT toy with specular/clutter outliers, direct GM wins outright (4.2% fail
+vs 54.2% for l2 on the hardest far case; median |az| 0.0036 vs 0.0740);
+GNC and huber>gm do not beat direct GM here. The third arm models the
+specular lobe with validated GGX pieces instead of muting it: it halves
+l2's bias floor but loses to GM muting, because the saturation clip is
+unmodeled. Lesson pinned: explain beats mute only when the explanation is
+complete. (2) Conditional QR safeguard: fire the QR branch iff
+eps*kappa(J^T J) > 1e-3. Silent on the light fit, SH-9 hemisphere, and
+30/15deg caps; fires on the ill-conditioned 5deg cap; QR error <= NE error
+across kappa(J) = 1e1..1e12. Honest finding: at realistic noise the
+narrow-cap problems are statistically unidentifiable anyway, so the real
+remedy there is the centered ridge prior (verified: centered beats
+zero-centered), not the factorization. The QR branch is confirmed not dead
+code and confirmed rarely needed.
+Honest limits: Lambertian toy, Blinn-Phong generator vs GGX third arm,
+24 trials per cell (owner runs 150); tau = 1e-3 pre-chosen, untuned.
+
 ## [1.6.0] - TEV functional materials (2026-10-19)
 
 Closed-form material compression: a chain of K combiner stages,

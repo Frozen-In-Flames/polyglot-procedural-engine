@@ -1,9 +1,21 @@
 // inverse/robust.ts - solver upgrades: Huber/IRLS, LM gain ratio,
-// sigmoid bounds, Gaussian pyramid, Eikonal regularizer, uncertainty.
+// sigmoid bounds, Gaussian pyramid, Eikonal regularizer, uncertainty,
+// Geman-McClure IRLS, graduated non-convexity.
 //
 // Huber loss with IRLS weights:
 //   rho_delta(r) = r^2/2 for |r| <= delta, else delta(|r| - delta/2),
 //   w = min(1, delta/|r|).
+// Geman-McClure (redescending, non-convex):
+//   rho_c(u) = (c^2/2) u^2/(c^2+u^2),  w(u) = (c^2/(c^2+u^2))^2,
+//   u = r/s the scale-normalized residual. The weight redescends to zero:
+//   gross outliers are nullified, not merely capped (Huber keeps a constant
+//   non-zero influence for large |u|).
+// IRLS Gauss-Newton with per-iteration scale re-estimation:
+//   s = max(sigmaFloor, 1.4826 * MAD(r)), backtracking on the robust cost.
+// Ground truth for the robust head-to-head:
+// docs/oracles/robust_cost_head2head.py (the owner's file); the scale
+// convention (weights from u = r/s, gradient from w*r) is the oracle's.
+import { solveLinear } from './jit.js';
 // LM step acceptance by gain ratio:
 //   rho = (L(theta) - L(theta+delta)) / (0.5 delta^T (lambda D delta - g)),
 //   g = J^T r, D = diag(J^T J); accept if rho > 0, shrink lambda when
@@ -22,6 +34,176 @@
 export function huberWeight(r: number, delta: number): number {
   const ar = Math.abs(r);
   return ar <= delta ? 1 : delta / ar;
+}
+
+/** Robust estimator kinds for IRLS Gauss-Newton. */
+export type RobustKind = 'l2' | 'huber' | 'gm';
+
+/**
+ * IRLS weight for the scale-normalized residual u = r/s (oracle's weights()):
+ * l2: 1; huber: min(1, 1.345/|u|); gm: (c^2/(c^2+u^2))^2 (redescending).
+ */
+export function robustWeight(u: number, kind: RobustKind, c = 3.0): number {
+  if (kind === 'l2') return 1;
+  if (kind === 'huber') return Math.min(1, 1.345 / Math.max(Math.abs(u), 1e-12));
+  const c2 = c * c;
+  return (c2 / (c2 + u * u)) ** 2;
+}
+
+/**
+ * Robust cost rho(u) per residual (oracle's rho_cost()): l2: u^2/2;
+ * huber: quadratic inside 1.345, linear outside; gm: (c^2/2) u^2/(c^2+u^2),
+ * saturating at c^2/2 per residual.
+ */
+export function robustCost(u: number, kind: RobustKind, c = 3.0): number {
+  if (kind === 'l2') return 0.5 * u * u;
+  if (kind === 'huber') {
+    const a = Math.abs(u);
+    const k = 1.345;
+    return a <= k ? 0.5 * u * u : k * a - 0.5 * k * k;
+  }
+  const c2 = c * c;
+  return (0.5 * c2 * u * u) / (c2 + u * u);
+}
+
+function medianSorted(v: number[]): number {
+  const s = v.slice().sort((a, b) => a - b);
+  const h = Math.floor(s.length / 2);
+  return s.length % 2 ? s[h] : 0.5 * (s[h - 1] + s[h]);
+}
+
+/** Robust scale s = max(sigmaFloor, 1.4826 * MAD(r)) (the oracle's rule). */
+export function madScale(r: number[], sigmaFloor: number): number {
+  const med = medianSorted(r);
+  const mad = medianSorted(r.map((v) => Math.abs(v - med)));
+  return Math.max(sigmaFloor, 1.4826 * mad);
+}
+
+export interface IrlsOpts {
+  kind: RobustKind;
+  /** GM tuning constant (default 3.0). */
+  c?: number;
+  /** Max Gauss-Newton iterations (default 40). */
+  maxIt?: number;
+  /** Step-norm stopping tolerance (default 1e-5). */
+  tol?: number;
+  /** Noise floor for the robust scale, e.g. the sensor sigma. */
+  sigmaFloor: number;
+  /** Parameter bounds applied after each step, e.g. I >= 0.05. */
+  clamp?: (th: number[]) => void;
+}
+
+export interface IrlsResult {
+  theta: number[];
+  iters: number;
+}
+
+/**
+ * IRLS Gauss-Newton with per-iteration scale re-estimation and backtracking
+ * on the robust cost. Faithful port of the oracle's irls(): the step solves
+ * (J^T W J + damp) d = J^T (w .* r) with the oracle's damping
+ * 1e-9*trace(A)*I + 1e-12*I, then backtracks on the robust cost.
+ */
+export function irlsGnFit(
+  y: number[],
+  theta0: number[],
+  render: (th: number[]) => number[],
+  jac: (th: number[]) => number[][],
+  opts: IrlsOpts,
+): IrlsResult {
+  const kind = opts.kind;
+  const c = opts.c ?? 3.0;
+  const maxIt = opts.maxIt ?? 40;
+  const tol = opts.tol ?? 1e-5;
+  const th = theta0.slice();
+  const p = th.length;
+  const m = y.length;
+  let iters = 0;
+  for (let it = 0; it < maxIt; it++) {
+    const yh = render(th);
+    const r = new Array(m);
+    for (let i = 0; i < m; i++) r[i] = y[i] - yh[i];
+    const s = madScale(r, opts.sigmaFloor);
+    const w = new Array(m);
+    for (let i = 0; i < m; i++) w[i] = robustWeight(r[i] / s, kind, c);
+    const J = jac(th);
+    const A: number[][] = Array.from({ length: p }, () => new Array(p).fill(0));
+    const g = new Array(p).fill(0);
+    for (let i = 0; i < m; i++) {
+      const wi = w[i];
+      const ri = r[i];
+      const row = J[i];
+      const wir = wi * ri;
+      for (let a = 0; a < p; a++) {
+        g[a] += row[a] * wir;
+        const ra = row[a] * wi;
+        for (let b = 0; b < p; b++) A[a][b] += ra * row[b];
+      }
+    }
+    let tr = 0;
+    for (let a = 0; a < p; a++) tr += A[a][a];
+    for (let a = 0; a < p; a++) A[a][a] += 1e-9 * tr + 1e-12;
+    const d = solveLinear(A, g);
+    const costAt = (st: number): number => {
+      const t2 = th.map((v, a) => v + st * d[a]);
+      const r2 = render(t2);
+      let sum = 0;
+      for (let i = 0; i < m; i++) sum += robustCost((y[i] - r2[i]) / s, kind, c);
+      return sum;
+    };
+    let c0 = 0;
+    for (let i = 0; i < m; i++) c0 += robustCost(r[i] / s, kind, c);
+    let st = 1;
+    while (costAt(st) > c0 && st > 1e-3) st *= 0.5;
+    for (let a = 0; a < p; a++) th[a] += st * d[a];
+    if (opts.clamp) opts.clamp(th);
+    iters++;
+    let step = 0;
+    for (let a = 0; a < p; a++) step += (st * d[a]) * (st * d[a]);
+    if (Math.sqrt(step) < tol) break;
+  }
+  return { theta: th, iters };
+}
+
+/**
+ * Graduated non-convexity for GM: anneal c from 50 down to cFinal
+ * (x0.7 per stage, <=6 IRLS iterations per stage), then a final polish at
+ * cFinal. Mirrors the oracle's gm-gnc exactly, including the final
+ * re-run at cFinal.
+ */
+export function fitGncGm(
+  y: number[],
+  theta0: number[],
+  render: (th: number[]) => number[],
+  jac: (th: number[]) => number[][],
+  opts: Omit<IrlsOpts, 'kind' | 'c'> & { cFinal?: number },
+): IrlsResult {
+  const cFinal = opts.cFinal ?? 3.0;
+  let th = theta0.slice();
+  let total = 0;
+  let c = 50;
+  for (;;) {
+    const r = irlsGnFit(y, th, render, jac, { ...opts, kind: 'gm', c, maxIt: 6 });
+    th = r.theta;
+    total += r.iters;
+    if (c <= cFinal) break;
+    c = Math.max(cFinal, c * 0.7);
+  }
+  const fin = irlsGnFit(y, th, render, jac, { ...opts, kind: 'gm', c: cFinal });
+  return { theta: fin.theta, iters: total + fin.iters };
+}
+
+/** Sequential: converge Huber, then continue with GM (the oracle's huber>gm). */
+export function fitHuberThenGm(
+  y: number[],
+  theta0: number[],
+  render: (th: number[]) => number[],
+  jac: (th: number[]) => number[][],
+  opts: Omit<IrlsOpts, 'kind'>,
+): IrlsResult {
+  const r1 = irlsGnFit(y, theta0, render, jac, { ...opts, kind: 'huber' });
+  const r2 = irlsGnFit(y, r1.theta, render, jac, { ...opts, kind: 'gm' });
+  return { theta: r2.theta, iters: r1.iters + r2.iters };
 }
 
 /**
