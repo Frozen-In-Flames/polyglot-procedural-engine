@@ -30,8 +30,16 @@ out of the march order.
 ## Inverse rendering across dimensions
 The solvers do not care about dimensionality. A 2D sprite tint, a 2.5D layer
 parallax rate, a 3D light azimuth, a 4D field evolution rate are all just
-parameters in theta. Same Gauss-Newton, same NIS gating, same robust costs.
-The forward model carries the dimensionality; the inverse machinery is uniform.
+parameters in theta. The default fit is the GM robust cost machinery
+(IRLS Geman-McClure with per-iteration MAD scale re-estimation, the
+v1.7.0/v1.8.1 validated costs), warm-started from theta0, with
+central-difference Jacobians; `robust: 'l2'` keeps the original plain damped
+Gauss-Newton for baselines. Measured on a joint 2D-tint + 3D-azimuth fit
+with 25% gross outliers: GM recovers both parameters within 0.05 of truth
+while plain GN is pulled off truth (error above 0.15); on clean data GM
+matches plain GN within 0.02 and reaches ~0 cost. A warm-started refit
+converges in fewer iterations than the same fit from a cold start.
+(test/dimensional-layers.test.ts: "robust fit" series)
 
 ## API sketch (finalized at build)
 - `layer2D(spec)`: billboard element { field2D, material, facing }
@@ -56,7 +64,12 @@ The forward model carries the dimensionality; the inverse machinery is uniform.
 Beyond visual parallax, layers can be gameplay planes: a fixed stack of depth
 planes (three is the classic count) that the player character inhabits and hops
 between. Each plane is a 2.5D layer with its own content and collision; hopping
-is a depth translation of the player, not a camera trick. In VR the planes stop
+is a depth translation of the player, not a camera trick. Since v1.9.0 the hop
+is coupled to the character controller: `hopCharacterPlane` translates the
+character's position by exactly the planes' center separation (for
+axis-aligned stacks, a pure z translation of the depth-tag separation),
+leaves velocity and in-plane position untouched, and moves nothing when the
+hop clamps at the end of the stack. In VR the planes stop
 being a visual effect and become navigable space: the player moves through real
 depth between planes while the headset tracks true head position. Craft-style
 material looks (cardboard, felt, sponge) for layer content ride on the v1.6.0

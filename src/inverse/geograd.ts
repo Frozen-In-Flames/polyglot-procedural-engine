@@ -11,12 +11,13 @@
 // Pixels crossing a silhouette need the boundary term (Reynolds transport):
 //   d/dtheta ∫_pixel c dA = ∫ dc/dtheta dA + ∮_sil (c_in - c_out)(v_theta . n_b) dl.
 //
-// UNVALIDATED (from memory): the 3D silhouette normal-speed derivation.
 // The 2D disk coverage identities ARE validated (coverage derivative =
 // in-pixel arc length; translation derivative = contour v.n integral).
-// The 3D normal speed v_theta . n_b is derived from f = 0, grad f . d = 0
-// and MUST be validated numerically before use; it is flagged here and
-// in docs/methods-provenance.md.
+// The 3D silhouette normal speed v_theta . n_b is implemented by finite
+// differences of Newton-tracked silhouette motion and validated against
+// translating/expanding sphere ground truths (speed exactly 1).
+// (An older from-memory analytic derivation was never validated and is
+// not shipped.)
 //
 // All techniques are classical public mathematics; see
 // docs/methods-provenance.md.
@@ -104,19 +105,139 @@ export function silhouetteDiskTerms(cx: number, cy: number, r: number): Silhouet
 }
 
 /**
- * 3D silhouette normal speed (UNVALIDATED, from memory).
+ * 3D silhouette normal speed by finite differences of tracked silhouette
+ * motion (v1.9.0).
  *
- * Derived from the system f = 0, grad f . d = 0 at the silhouette.
- * DO NOT USE in production solves until validated numerically against
- * finite differences of actual silhouette motion. Flagged per the
- * validation ledger.
+ * The silhouette for view direction d is the contour where f = 0 and
+ * grad f . d = 0. The normal speed v_theta . n_b is the speed at which
+ * that contour moves (in the image plane, along the contour normal n_b)
+ * as theta_k varies. This implementation measures it directly: it
+ * Newton-tracks one silhouette point across theta_k +- h and central-
+ * differences the normal displacement.
+ *
+ * Tracking: Newton on the 3-equation system
+ *   F(p) = [ f(p), (grad f(p)) . d, (p - p0) . t_c ],
+ * where t_c is the contour tangent at the seed point and the third row
+ * pins the tracked point so it cannot drift along the contour. The
+ * contour normal is n_b = d x t_c, oriented outward (n_b . grad f > 0).
+ *
+ * Validated against translating and expanding sphere ground truths
+ * (speed exactly 1); see test/geograd.test.ts. Returns NaN, documented
+ * here, when the seed is not near a silhouette or the Newton re-solve
+ * fails to converge: a non-answer, not a throw.
  */
+export interface SilhouetteTrackOpts {
+  /** Newton iterations for the silhouette re-solve (default 60). */
+  newtonIters?: number;
+  /** Newton convergence tolerance on |F|_inf (default 1e-10). */
+  newtonTol?: number;
+  /** Central-difference step over theta_k (default 1e-5). */
+  h?: number;
+}
+
+function crossInto(a: Vec3, b: Vec3): Vec3 {
+  return [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0],
+  ];
+}
+
+/** Solve a 3x3 linear system by Gaussian elimination with pivoting. */
+function solve3(A: number[][], b: number[]): Vec3 | null {
+  const M = A.map((row, i) => [...row, b[i]]);
+  for (let c = 0; c < 3; c++) {
+    let piv = c;
+    for (let r = c + 1; r < 3; r++) {
+      if (Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
+    }
+    if (Math.abs(M[piv][c]) < 1e-300) return null;
+    [M[c], M[piv]] = [M[piv], M[c]];
+    const d = M[c][c];
+    for (let r = 0; r < 3; r++) {
+      if (r === c) continue;
+      const f = M[r][c] / d;
+      for (let k = c; k < 4; k++) M[r][k] -= f * M[c][k];
+    }
+  }
+  return [M[0][3] / M[0][0], M[1][3] / M[1][1], M[2][3] / M[2][2]];
+}
+
+/**
+ * Newton-track the silhouette point near seed for parameters theta.
+ * Returns the refined point, or null when the solve fails.
+ */
+function trackSilhouette(
+  field: FieldDerivs,
+  seed: Vec3,
+  d: Vec3,
+  theta: number[],
+  tc: Vec3,
+  p0: Vec3,
+  newtonIters: number,
+  newtonTol: number,
+): Vec3 | null {
+  const p: Vec3 = [seed[0], seed[1], seed[2]];
+  for (let it = 0; it < newtonIters; it++) {
+    const g = field.grad(p, theta);
+    const F = [
+      field.f(p, theta),
+      g[0] * d[0] + g[1] * d[1] + g[2] * d[2],
+      (p[0] - p0[0]) * tc[0] + (p[1] - p0[1]) * tc[1] + (p[2] - p0[2]) * tc[2],
+    ];
+    if (Math.max(Math.abs(F[0]), Math.abs(F[1]), Math.abs(F[2])) < newtonTol) return p;
+    const H = field.hess(p, theta);
+    const Hd: Vec3 = [
+      H[0][0] * d[0] + H[0][1] * d[1] + H[0][2] * d[2],
+      H[1][0] * d[0] + H[1][1] * d[1] + H[1][2] * d[2],
+      H[2][0] * d[0] + H[2][1] * d[1] + H[2][2] * d[2],
+    ];
+    const step = solve3([g, Hd, tc], [-F[0], -F[1], -F[2]]);
+    if (!step) return null;
+    p[0] += step[0]; p[1] += step[1]; p[2] += step[2];
+  }
+  return null;
+}
+
 export function silhouetteNormalSpeed3D(
-  field: FieldDerivs, p: Vec3, d: Vec3, theta: number[], k: number,
+  field: FieldDerivs,
+  p: Vec3,
+  d: Vec3,
+  theta: number[],
+  k: number,
+  opts: SilhouetteTrackOpts = {},
 ): number {
-  void field; void p; void d; void theta; void k;
-  throw new Error(
-    'silhouetteNormalSpeed3D is UNVALIDATED (from memory). ' +
-    'Validate numerically before use; see docs/methods-provenance.md §5.',
-  );
+  const newtonIters = opts.newtonIters ?? 60;
+  const newtonTol = opts.newtonTol ?? 1e-10;
+  const h = opts.h ?? 1e-5;
+  const dl = Math.hypot(d[0], d[1], d[2]) || 1;
+  const dn: Vec3 = [d[0] / dl, d[1] / dl, d[2] / dl];
+  // Contour tangent at the seed; degenerate unless the seed is near a
+  // silhouette (grad f perpendicular to d).
+  const g0 = field.grad(p, theta);
+  const tcRaw = crossInto(g0, dn);
+  const tl = Math.hypot(tcRaw[0], tcRaw[1], tcRaw[2]);
+  if (tl < 1e-8) return NaN;
+  const tc: Vec3 = [tcRaw[0] / tl, tcRaw[1] / tl, tcRaw[2] / tl];
+  // Refine the seed at the base parameters.
+  const pBase = trackSilhouette(field, p, dn, theta, tc, p, newtonIters, newtonTol);
+  if (!pBase) return NaN;
+  // Outward contour normal in the image plane.
+  const nbRaw = crossInto(dn, tc);
+  const nl = Math.hypot(nbRaw[0], nbRaw[1], nbRaw[2]) || 1;
+  let nb: Vec3 = [nbRaw[0] / nl, nbRaw[1] / nl, nbRaw[2] / nl];
+  const gb = field.grad(pBase, theta);
+  if (nb[0] * gb[0] + nb[1] * gb[1] + nb[2] * gb[2] < 0) {
+    nb = [-nb[0], -nb[1], -nb[2]];
+  }
+  // Track across theta_k +- h, seeded at the refined base point.
+  const tp = theta.slice(); tp[k] += h;
+  const tm = theta.slice(); tm[k] -= h;
+  const pPlus = trackSilhouette(field, pBase, dn, tp, tc, pBase, newtonIters, newtonTol);
+  const pMinus = trackSilhouette(field, pBase, dn, tm, tc, pBase, newtonIters, newtonTol);
+  if (!pPlus || !pMinus) return NaN;
+  const dx = (pPlus[0] - pMinus[0]) / (2 * h);
+  const dy = (pPlus[1] - pMinus[1]) / (2 * h);
+  const dz = (pPlus[2] - pMinus[2]) / (2 * h);
+  return nb[0] * dx + nb[1] * dy + nb[2] * dz;
 }

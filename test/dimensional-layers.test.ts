@@ -7,6 +7,7 @@ import {
   parallaxUV,
   hopPlane,
   hopDistance,
+  hopCharacterPlane,
   planeContentAt,
   fitLayerParams,
   type PinholeCam,
@@ -16,7 +17,9 @@ import {
   type Solid3D,
   type Field4D,
   type PlaneStack,
+  type PlayerOnPlanes,
 } from '../src/scene/layers.js';
+import { makeCharacter } from '../src/game/character.js';
 import { clampMinMax } from '../src/render/temporal.js';
 import { tevEvaluate, polyChainWiring } from '../src/material/tev.js';
 
@@ -362,4 +365,168 @@ test('materials: a layer color can be a TEV combiner evaluation', () => {
   approx(hit.color[0], v, 1e-12);
   approx(hit.color[1], v, 1e-12);
   approx(hit.color[2], v, 1e-12);
+});
+
+// ---------------------------------------------------------------------------
+// v1.9.0: the dimension-uniform solver is real (GM robust costs, warm starts)
+// ---------------------------------------------------------------------------
+// v1.8.0 shipped fitLayerParams as plain damped Gauss-Newton; the
+// "dimension-uniform solver" claim was structural. Since v1.9.0 the default
+// is the GM robust cost machinery from src/inverse/robust.ts (IRLS with
+// MAD scale re-estimation), warm-started from theta0. These tests pin the
+// behavior: robust wins on dirty data, matches plain GN on clean data, and
+// a warm start converges in fewer iterations than a cold start.
+
+// Deterministic PRNG (mulberry32) so the contamination is reproducible.
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function lightDir(phi: number): [number, number, number] {
+  const l: [number, number, number] = [Math.sin(phi), 0.35, -Math.cos(phi)];
+  const n = Math.hypot(l[0], l[1], l[2]);
+  return [l[0] / n, l[1] / n, l[2] / n];
+}
+
+// Joint 2D tint + 3D light azimuth forward model (same block-diagonal
+// structure as the v1.8.0 joint-fit test).
+function tintAzimuthRender(theta: number[]): number[] {
+  const [a, phi] = theta;
+  const l = lightDir(phi);
+  const bb: Layer2D = billboard({
+    size: [0.8, 0.8],
+    field2: () => -1,
+    color: () => [a * 0.8, a * 0.2, a * 0.2],
+  });
+  const sph: Solid3D = {
+    kind: '3d',
+    sdf: (p) => Math.hypot(p[0], p[1], p[2] - 8) - 1,
+    shade: (_p, n) => {
+      const d = Math.max(0, n[0] * l[0] + n[1] * l[1] + n[2] * l[2]);
+      return [0.7 * d, 0.7 * d, 0.7 * d];
+    },
+  };
+  const out: number[] = [];
+  for (const nx of [0, -0.07, 0.07]) {
+    const h = marchScene([bb, sph], pinholeRay(CAM, nx, 0), CAM.pos);
+    out.push(h.color[0], h.color[1], h.color[2]);
+  }
+  for (const nx of [-0.19, -0.16, 0.16, 0.19]) {
+    const h = marchScene([bb, sph], pinholeRay(CAM, nx, 0), CAM.pos);
+    out.push(h.color[0], h.color[1], h.color[2]);
+  }
+  return out;
+}
+
+const ROBUST_TRUTH = [0.9, 0.6];
+const ROBUST_START = [0.5, 0.2];
+
+/** Contaminated observations: Gaussian noise plus gross outliers. */
+function dirtyObservations(seed: number, outlierFrac = 0.25): number[] {
+  const rnd = mulberry32(seed);
+  const clean = tintAzimuthRender(ROBUST_TRUTH);
+  return clean.map((v) => {
+    const u = rnd();
+    if (u < outlierFrac) return v + 2.0 * (rnd() < 0.5 ? 1 : -1); // gross outlier
+    return v + 0.01 * (rnd() * 2 - 1); // small noise
+  });
+}
+
+test('robust fit: GM recovers truth under outlier contamination', () => {
+  const y = dirtyObservations(7);
+  const fit = fitLayerParams(tintAzimuthRender, ROBUST_START, y, { robust: 'gm' });
+  assert.ok(Math.abs(fit.theta[0] - ROBUST_TRUTH[0]) < 0.05,
+    `tint ${fit.theta[0]} vs truth ${ROBUST_TRUTH[0]}`);
+  assert.ok(Math.abs(fit.theta[1] - ROBUST_TRUTH[1]) < 0.05,
+    `azimuth ${fit.theta[1]} vs truth ${ROBUST_TRUTH[1]}`);
+});
+
+test('robust fit NEGATIVE: plain GN fails on the same dirty data', () => {
+  const y = dirtyObservations(7);
+  const gm = fitLayerParams(tintAzimuthRender, ROBUST_START, y, { robust: 'gm' });
+  const plain = fitLayerParams(tintAzimuthRender, ROBUST_START, y, { robust: 'l2' });
+  const errGm = Math.hypot(gm.theta[0] - ROBUST_TRUTH[0], gm.theta[1] - ROBUST_TRUTH[1]);
+  const errPlain = Math.hypot(plain.theta[0] - ROBUST_TRUTH[0], plain.theta[1] - ROBUST_TRUTH[1]);
+  assert.ok(errPlain > 0.15, `plain GN should be pulled off truth, err ${errPlain}`);
+  assert.ok(errGm < 0.25 * errPlain,
+    `GM err ${errGm} should be well below plain err ${errPlain}`);
+});
+
+test('robust fit: GM matches plain GN on clean data', () => {
+  const y = tintAzimuthRender(ROBUST_TRUTH); // noiseless
+  const gm = fitLayerParams(tintAzimuthRender, ROBUST_START, y, { robust: 'gm' });
+  const plain = fitLayerParams(tintAzimuthRender, ROBUST_START, y, { robust: 'l2' });
+  for (let k = 0; k < 2; k++) {
+    assert.ok(Math.abs(gm.theta[k] - ROBUST_TRUTH[k]) < 0.02,
+      `GM clean param ${k}: ${gm.theta[k]} vs ${ROBUST_TRUTH[k]}`);
+    assert.ok(Math.abs(gm.theta[k] - plain.theta[k]) < 0.02,
+      `GM vs plain param ${k}: ${gm.theta[k]} vs ${plain.theta[k]}`);
+  }
+  assert.ok(gm.finalCost < 1e-6, `GM final cost ${gm.finalCost} should be ~0 noiseless`);
+});
+
+test('robust fit: warm start converges in fewer iterations than cold start', () => {
+  const yA = tintAzimuthRender(ROBUST_TRUTH);
+  const solA = fitLayerParams(tintAzimuthRender, ROBUST_START, yA, { robust: 'gm' });
+  // Slightly moved problem: the warm start begins near the solution.
+  const truthB = [ROBUST_TRUTH[0] + 0.03, ROBUST_TRUTH[1] - 0.04];
+  const yB = tintAzimuthRender(truthB);
+  const cold = fitLayerParams(tintAzimuthRender, ROBUST_START, yB, { robust: 'gm' });
+  const warm = fitLayerParams(tintAzimuthRender, solA.theta, yB, { robust: 'gm' });
+  assert.ok(Math.abs(warm.theta[0] - truthB[0]) < 0.02 && Math.abs(warm.theta[1] - truthB[1]) < 0.02,
+    `warm start must still solve: ${warm.theta} vs ${truthB}`);
+  assert.ok(warm.iters < cold.iters,
+    `warm iters ${warm.iters} should beat cold iters ${cold.iters}`);
+});
+
+// ---------------------------------------------------------------------------
+// v1.9.0: plane hops translate the character itself (coupled to the
+// character controller), not just the plane index
+// ---------------------------------------------------------------------------
+
+test('planes: hop is a pure depth translation of the character', () => {
+  const stack = threePlanes(); // depths 2, 6, 10; centers [0,0,d]
+  const st = makeCharacter([1.5, 0.5, 6]);
+  st.vel = [0.3, -0.1, 0.2];
+  const s: PlayerOnPlanes = { plane: 1, uv: [0.2, 0.3] };
+  const s1 = hopCharacterPlane(stack, st, s, 1);
+  assert.equal(s1.plane, 2);
+  assert.deepEqual(s1.uv, [0.2, 0.3]); // in-plane position untouched
+  // Exactly the plane delta in depth, bit-identical in the other axes.
+  assert.equal(st.pos[0], 1.5);
+  assert.equal(st.pos[1], 0.5);
+  assert.equal(st.pos[2], 10);
+  // Pure translation: velocity untouched.
+  assert.deepEqual(st.vel, [0.3, -0.1, 0.2]);
+});
+
+test('planes: hopping down then up returns the character exactly', () => {
+  const stack = threePlanes();
+  const st = makeCharacter([0, 1, 10]);
+  let s: PlayerOnPlanes = { plane: 2, uv: [0, 0] };
+  s = hopCharacterPlane(stack, st, s, -1);
+  assert.equal(s.plane, 1);
+  assert.equal(st.pos[2], 6);
+  s = hopCharacterPlane(stack, st, s, 1);
+  assert.equal(s.plane, 2);
+  assert.equal(st.pos[2], 10);
+  assert.equal(st.pos[0], 0);
+  assert.equal(st.pos[1], 1);
+});
+
+test('planes: clamped hop moves neither the plane index nor the character', () => {
+  const stack = threePlanes();
+  const st = makeCharacter([1.5, 0.5, 10]);
+  const s1 = hopCharacterPlane(stack, st, { plane: 2, uv: [0, 0] }, 1);
+  assert.equal(s1.plane, 2);
+  assert.deepEqual(st.pos, [1.5, 0.5, 10]);
+  const s0 = hopCharacterPlane(stack, st, { plane: 0, uv: [0, 0] }, -1);
+  assert.equal(s0.plane, 0);
+  assert.deepEqual(st.pos, [1.5, 0.5, 10]);
 });

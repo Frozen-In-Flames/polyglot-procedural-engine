@@ -18,7 +18,9 @@
 // player inhabits and hops between. Hopping is a depth translation of the
 // player, never a camera trick.
 import type { Vec2, Vec3 } from '../math/vec.js';
+import type { CharacterState } from '../game/character.js';
 import { finiteJacobian } from '../inverse/conditioning.js';
+import { irlsGnFit, fitGncGm } from '../inverse/robust.js';
 
 export type DimKind = '2d' | '2.5d' | '3d' | '4d';
 
@@ -292,6 +294,31 @@ export function hopPlane(stack: PlaneStack, s: PlayerOnPlanes, dir: 1 | -1): Pla
   return { plane, uv: [s.uv[0], s.uv[1]] };
 }
 
+/**
+ * Hop the character between gameplay planes: a pure depth translation of
+ * the character itself, not a camera trick and not just an index change.
+ * The character position moves by exactly the planes' center separation
+ * (for axis-aligned stacks, a pure z translation of the depth-tag
+ * separation; hopDistance is its magnitude). Velocity, grounded state and
+ * the in-plane uv are untouched: translation only. A clamped hop (already
+ * at the end of the stack) moves nothing.
+ */
+export function hopCharacterPlane(
+  stack: PlaneStack,
+  st: CharacterState,
+  s: PlayerOnPlanes,
+  dir: 1 | -1,
+): PlayerOnPlanes {
+  const next = hopPlane(stack, s, dir);
+  if (next.plane === s.plane) return next; // clamped: no motion
+  const from = stack.planes[s.plane];
+  const to = stack.planes[next.plane];
+  st.pos[0] += to.center[0] - from.center[0];
+  st.pos[1] += to.center[1] - from.center[1];
+  st.pos[2] += to.center[2] - from.center[2];
+  return next;
+}
+
 /** World-space distance covered by a hop: the planes' depth separation. */
 export function hopDistance(stack: PlaneStack, from: number, to: number): number {
   return Math.abs(stack.planes[to].depth - stack.planes[from].depth);
@@ -327,8 +354,22 @@ function solveDense(A: number[][], b: number[]): number[] {
 
 export interface FitOpts {
   iters?: number;
+  /** Plain-path damping (only used with robust: 'l2'). */
   lambda?: number;
   tol?: number;
+  /**
+   * Robust cost for the fit. Default 'gm': IRLS Geman-McClure with
+   * per-iteration MAD scale re-estimation (src/inverse/robust.ts),
+   * warm-started from theta0. 'huber' selects Huber IRLS. 'l2' selects
+   * the original plain damped Gauss-Newton.
+   */
+  robust?: 'gm' | 'huber' | 'l2';
+  /** GM tuning constant (default 3.0). */
+  gmC?: number;
+  /** Noise floor for the MAD robust scale (default 1e-6). */
+  sigmaFloor?: number;
+  /** Graduated non-convexity: anneal c from 50 (default false). */
+  gnc?: boolean;
 }
 
 export interface FitResult {
@@ -338,16 +379,54 @@ export interface FitResult {
 }
 
 /**
- * Damped Gauss-Newton on 1/2 ||render(theta) - y||^2 with central-difference
- * Jacobians (the engine FD convention). The forward model carries the
- * dimensionality; the solver never sees it: a 2D tint and a 3D light
- * azimuth are both just entries of theta.
+ * Dimension-uniform fit, now on the robust cost machinery.
+ *
+ * Default (robust: 'gm'): IRLS Gauss-Newton under the Geman-McClure cost
+ * with per-iteration MAD scale re-estimation and backtracking, using
+ * central-difference Jacobians (the engine FD convention) and
+ * warm-started from theta0: each IRLS stage continues from the previous
+ * iterate, so a refit from a nearby solution converges in a few steps.
+ * On clean data GM matches plain Gauss-Newton; on outlier-contaminated
+ * observations it redescends the gross residuals instead of being pulled
+ * by them. The forward model carries the dimensionality; the solver never
+ * sees it: a 2D tint and a 3D light azimuth are both just entries of theta.
+ *
+ * robust: 'l2' keeps the original plain damped Gauss-Newton on
+ * 1/2 ||render(theta) - y||^2, for baselines and exact reproducibility.
+ * finalCost is always the plain 1/2 ||r||^2 at the solution, so robust
+ * and plain fits compare on the same scale.
  */
 export function fitLayerParams(
   render: (theta: number[]) => number[],
   theta0: number[],
   y: number[],
   opts: FitOpts = {},
+): FitResult {
+  const kind = opts.robust ?? 'gm';
+  if (kind === 'l2') return fitPlainDampedGN(render, theta0, y, opts);
+  const jac = (th: number[]): number[][] => finiteJacobian(render, th);
+  const irlsOpts = {
+    kind,
+    c: opts.gmC ?? 3.0,
+    maxIt: opts.iters ?? 40,
+    tol: opts.tol ?? 1e-5,
+    sigmaFloor: opts.sigmaFloor ?? 1e-6,
+  };
+  const r = opts.gnc
+    ? fitGncGm(y, theta0, render, jac, irlsOpts)
+    : irlsGnFit(y, theta0, render, jac, irlsOpts);
+  const yh = render(r.theta);
+  let cost = 0;
+  for (let i = 0; i < y.length; i++) cost += 0.5 * (yh[i] - y[i]) ** 2;
+  return { theta: r.theta, iters: r.iters, finalCost: cost };
+}
+
+/** The original plain damped Gauss-Newton (v1.8.0 behavior, kept for 'l2'). */
+function fitPlainDampedGN(
+  render: (theta: number[]) => number[],
+  theta0: number[],
+  y: number[],
+  opts: FitOpts,
 ): FitResult {
   const iters = opts.iters ?? 25;
   const lambda = opts.lambda ?? 1e-3;

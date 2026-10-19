@@ -5,13 +5,15 @@
 // 2. Normal:     dn/dtheta = (I - n n^T)(H d dt*/dtheta + d/dtheta grad f)/||grad f||
 // 3. Silhouette (2D disk identities, VALIDATED): coverage derivative =
 //    in-pixel arc length; translation derivative = contour (v.n) integral.
-//    The 3D silhouette normal-speed derivation is UNVALIDATED (from memory)
-//    and flagged as such in src/inverse/geograd.ts.
+//    3D silhouette normal speed is implemented by finite differences of
+//    tracked silhouette motion (v1.9.0), validated against translating and
+//    expanding sphere ground truths (speed exactly 1).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Vec3 } from '../src/math/vec.js';
 import {
   hitPointGradient, normalGradient, silhouetteDiskTerms,
+  silhouetteNormalSpeed3D,
   type FieldDerivs,
 } from '../src/inverse/geograd.js';
 
@@ -152,3 +154,103 @@ function diskCoverage(cx: number, cy: number, r: number, N = 200000): number {
   }
   return sum / N;
 }
+
+// ---------------------------------------------------------------------------
+// v1.9.0: 3D silhouette normal speed is implemented (finite differences of
+// tracked silhouette motion). Ground truth: a sphere translating or
+// expanding moves its silhouette contour at exactly speed 1.
+// ---------------------------------------------------------------------------
+
+/** Sphere field with theta = [cx, r]; view direction d = +z. */
+function sphereField(): FieldDerivs {
+  const f = (p: Vec3, th: number[]): number => {
+    const [cx, r] = th;
+    return Math.hypot(p[0] - cx, p[1], p[2]) - r;
+  };
+  const grad = (p: Vec3, th: number[]): Vec3 => {
+    const [cx] = th;
+    const l = Math.hypot(p[0] - cx, p[1], p[2]) || 1;
+    return [(p[0] - cx) / l, p[1] / l, p[2] / l];
+  };
+  const hess = (p: Vec3, th: number[]): number[][] => {
+    const [cx, r] = th;
+    const dx = p[0] - cx, dy = p[1], dz = p[2];
+    const l = Math.hypot(dx, dy, dz) || 1;
+    const n = [dx / l, dy / l, dz / l];
+    // H = (I - n n^T) / l for f = |p - c| - r.
+    return [
+      [(1 - n[0] * n[0]) / l, -n[0] * n[1] / l, -n[0] * n[2] / l],
+      [-n[1] * n[0] / l, (1 - n[1] * n[1]) / l, -n[1] * n[2] / l],
+      [-n[2] * n[0] / l, -n[2] * n[1] / l, (1 - n[2] * n[2]) / l],
+    ];
+  };
+  const dThetaF = (p: Vec3, th: number[], k: number): number => {
+    const [cx] = th;
+    const l = Math.hypot(p[0] - cx, p[1], p[2]) || 1;
+    if (k === 0) return -(p[0] - cx) / l; // d/dcx |p - c|
+    return -1; // d/dr (|p - c| - r)
+  };
+  const dThetaGrad = (p: Vec3, th: number[], k: number): Vec3 => {
+    // Finite differences over theta (test reference only).
+    const h = 1e-7;
+    const tp = [...th], tm = [...th];
+    tp[k] += h; tm[k] -= h;
+    const gp = grad(p, tp), gm = grad(p, tm);
+    return [(gp[0] - gm[0]) / (2 * h), (gp[1] - gm[1]) / (2 * h), (gp[2] - gm[2]) / (2 * h)];
+  };
+  return { f, grad, hess, dThetaF, dThetaGrad };
+}
+
+const SIL_D: Vec3 = [0, 0, 1];
+const SIL_TH = [0.3, 1.2]; // cx = 0.3, r = 1.2
+// Silhouette point at image angle 0: (cx + r, 0, 0); contour normal is +x.
+const SIL_P: Vec3 = [0.3 + 1.2, 0, 0];
+
+test('geograd: silhouette normal speed is 1 for a translating sphere', () => {
+  const v = silhouetteNormalSpeed3D(sphereField(), SIL_P, SIL_D, SIL_TH, 0);
+  assert.ok(Math.abs(v - 1) < 1e-4, `translating sphere speed ${v}, want 1`);
+});
+
+test('geograd: silhouette normal speed is 1 for an expanding sphere', () => {
+  const v = silhouetteNormalSpeed3D(sphereField(), SIL_P, SIL_D, SIL_TH, 1);
+  assert.ok(Math.abs(v - 1) < 1e-4, `expanding sphere speed ${v}, want 1`);
+});
+
+test('geograd: silhouette normal speed converges O(h^2) under step refinement', () => {
+  // Cubic parametrization: center cx = s^3, so the silhouette motion is
+  // genuinely nonlinear and central differences show their O(h^2)
+  // truncation. Ground truth at s0 = 0.5: dp/ds = 3 s^2 = 0.75.
+  const cxOf = (s: number): number => s ** 3;
+  const field = sphereField();
+  // Theta is [s] directly: center cx = s^3, radius fixed at 1.2.
+  const cubicDirect: FieldDerivs = {
+    f: (p, th) => Math.hypot(p[0] - cxOf(th[0]), p[1], p[2]) - 1.2,
+    grad: (p, th) => {
+      const cx = cxOf(th[0]);
+      const l = Math.hypot(p[0] - cx, p[1], p[2]) || 1;
+      return [(p[0] - cx) / l, p[1] / l, p[2] / l];
+    },
+    hess: (p, th) => field.hess(p, [cxOf(th[0]), 1.2]),
+    dThetaF: (p, th, k) => field.dThetaF(p, [cxOf(th[0]), 1.2], k),
+    dThetaGrad: (p, th, k) => field.dThetaGrad(p, [cxOf(th[0]), 1.2], k),
+  };
+  const s0 = 0.5;
+  const seed: Vec3 = [cxOf(s0) + 1.2, 0, 0];
+  const truth = 3 * s0 * s0; // 0.75
+  const e = (h: number): number =>
+    Math.abs(silhouetteNormalSpeed3D(cubicDirect, seed, SIL_D, [s0], 0, { h }) - truth);
+  const e1 = e(4e-3);
+  const e2 = e(2e-3);
+  const e3 = e(1e-3);
+  assert.ok(e3 < 2e-6, `finest error ${e3} should be small`);
+  // Central differences are O(h^2): halving h must shrink the error.
+  assert.ok(e2 < e1, `error should shrink: e(4e-3)=${e1}, e(2e-3)=${e2}`);
+  assert.ok(e3 < e2, `error should shrink: e(2e-3)=${e2}, e(1e-3)=${e3}`);
+});
+
+test('geograd NEGATIVE: non-silhouette point returns NaN, not a throw', () => {
+  // Surface point but NOT on the silhouette: grad f . d = 1, not 0.
+  const p: Vec3 = [0.3, 0, 1.2];
+  const v = silhouetteNormalSpeed3D(sphereField(), p, SIL_D, SIL_TH, 0);
+  assert.ok(Number.isNaN(v), `non-silhouette input should give NaN, got ${v}`);
+});

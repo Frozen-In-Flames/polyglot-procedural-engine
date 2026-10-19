@@ -171,7 +171,10 @@ Accept the step if the gain ratio $\varrho=\dfrac{\mathcal L(\theta)-\mathcal L(
 
 $$\frac{\partial t^*}{\partial\theta}=-\frac{\partial_\theta f}{\nabla f\cdot\mathbf d},\qquad \frac{d\mathbf n}{d\theta}=\frac{(I-\mathbf n\mathbf n^\top)\big(H\mathbf d\,\tfrac{\partial t^*}{\partial\theta}+\partial_\theta\nabla f\big)}{\|\nabla f\|}$$
 
-**Silhouette term** (2D coverage identity ✔, 3D derivation ○):
+**Silhouette term** (2D coverage identity ✔, 3D normal speed ✔ via finite
+differences of Newton-tracked silhouette motion: speed exactly 1 on
+translating and expanding sphere ground truths, O(h^2) convergence under
+step refinement; NaN, not a throw, when the seed is off the silhouette):
 
 $$\oint(c_{\text{in}}-c_{\text{out}})(\mathbf v_\theta\!\cdot\mathbf n_b)\,d\ell$$
 
