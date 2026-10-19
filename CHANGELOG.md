@@ -3,6 +3,21 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [1.5.0] - JIT inverse rendering (2026-10-19)
+
+Owner validation track (docs/oracles/test_jit_inverse.py) ported to TS with real
+assertions; 453/453 suite green (443 prior + 10 new). New module src/inverse/jit.ts:
+per-frame MAP Gauss-Newton steps equal to Kalman updates (TS agrees with owner's
+Python to < 1e-9), warm starts (3.18 iters, 0 failures over 39 drifting frames vs
+cold 9.23 iters, 23% failed), NIS change detection (z > 6 flags the jump on the
+first frame, re-solve re-locks), subsampling error within 30% of the Cramer-Rao
+1/sqrt(m) bound, one-shot SH-9 solve (hemisphere cond 24.3, noise scales x10.1 per
+x10), geometry parameters (ellipsoid squash, analytic Jacobian) in the JIT loop,
+model-mismatch stress (unmodeled specular leaves a 0.017 rad bias floor, not
+noise), and measured timing (~4 ms/frame on the toy, linear in pixels).
+Honest limits: Lambertian-only toy with matched generator; timing measured on the
+toy in Node, not a device frame budget.
+
 ## [1.4.1] - V10.5 spec deltas (2026-10-19)
 
 Owner validation oracles (SH, error-state filter) applied as spec deltas;
