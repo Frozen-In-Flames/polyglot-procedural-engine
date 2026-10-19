@@ -3,6 +3,28 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [1.4.0] - V10.5 "Game feel" (2026-10-19)
+
+Three game systems, math-first, zero new dependencies (minor version per
+semver). Tests written before implementation; the identity suite is green
+before the tag. New docs in docs/game-feel.md; the README is untouched
+pending the authorized catch-up.
+
+- **Fixed-timestep loop** (`src/game/loop.ts`): accumulator, fixed
+  dt = 1/60 s, spiral-of-death clamp (max 5 ticks per frame, debt
+  dropped), render interpolation alpha in [0, 1]. Identical frame
+  sequences give identical tick streams. 5 tests.
+- **Capsule character controller** (`src/game/character.ts`): two-sphere
+  capsule vs the SDF field, penetration resolved along the field
+  gradient, ground band r + groundEps, walkable slopes n.y >= slopeLimit
+  with steeper slopes sliding via gravity plus contact resolve. Coyote
+  ticks, jump buffering, and early-release jump cut defined
+  mathematically in ticks; jump apex pinned to the exact discrete model.
+  9 tests.
+- **Deterministic input replay** (`src/game/replay.ts`): seeded per-tick
+  input log (move, jump pressed/held, look delta) replayed through the
+  identical tick function; final state bit-identical (ULP 0). 2 tests.
+
 ## [1.3.0] - V10.4 "Integrate all" (2026-10-18)
 
 Eight integrated subsystems (minor version per semver). Tests written

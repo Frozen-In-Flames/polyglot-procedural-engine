@@ -48,6 +48,7 @@ export {
 export type { SfxVoiceKind, SfxRenderOpts } from './audio/synth.js';
 export * from './script/index.js';
 export * from './input/index.js';
+export * from './game/index.js';
 export * from './math/sdf.js';
 export { RaymarchRenderer, buildRaymarchFragment, cameraBasis } from './render/raymarch.js';
 export type { RaymarchCamera, RaymarchOpts, RaymarchMaterial } from './render/raymarch.js';

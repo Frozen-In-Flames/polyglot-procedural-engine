@@ -191,6 +191,27 @@ V10.4, unvalidated (○):
 - ○ Error-state filter vs simulated gyro bias: owner's oracle INCOMING;
   port on arrival.
 
+V10.5, validated:
+- ✔ Fixed-timestep loop: accumulator, TICK_DT = 1/60, MAX_STEPS = 5
+  spiral-of-death clamp, render alpha in [0, 1]; identical frame
+  sequences give identical tick streams.
+- ✔ Capsule character controller: two-sphere capsule vs the SDF field,
+  penetration resolved along the field gradient, ground band r +
+  groundEps, walkable n.y >= slopeLimit, steeper slopes slide via
+  gravity plus contact resolve (no stick); coyote ticks, buffered
+  jumps, and early-release jump cut defined in ticks; jump apex pinned
+  to the exact discrete model (within one tick of v^2/2g); dropped
+  capsule rests at r + halfHeight with no jitter by construction.
+- ✔ Deterministic input replay: seeded per-tick input log replayed
+  through the identical tick function; final state bit-identical
+  (ULP distance 0 on all components, 240 seeded ticks).
+
+V10.5, unvalidated (○):
+- ○ Cross-language ports of the game-feel tick functions (C++, Python,
+  C#, Swift, Kotlin): the tick functions are pure float64 with no
+  platform transcendentals in the hot path, so the port is mechanical,
+  but it is unclaimed until ported and tested.
+
 DROPPED (do not implement): linear Kalman equations (error-state only),
 PCA as automatic semantic sliders (curated manual names only), separate
 albedo and intensity coefficients (merged rho*E only).
