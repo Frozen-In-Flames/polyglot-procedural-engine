@@ -97,121 +97,134 @@ is fine and stays.
 
 ## 5. Validation ledger (canonical reference)
 
-Every formula below is marked ✔ (validated against an independent
-reference: oracle script, published vector, or measured identity) or
-○ (implemented from memory, UNVALIDATED, pending an oracle test).
-○ items are flagged in code comments wherever they appear.
+This is the consolidated set, trimmed to what the engine uses. Status marks: ✔ means I ran it against an independent reference, ○ means it's from memory and still untested.
 
-V10.1/V10.2, validated:
-- ✔ Sphere-tracing under-relaxation: warped field tunnels at omega=1.0,
-  converges at 0.85 (test/lipschitz.test.ts).
-- ✔ Per-operator Lipschitz bounds: zero violations over random pairs;
-  measured looseness warp 1.06x, noise displacement 1.48x, twist 2.23x,
-  noise-gradient 1.78x. Note: ~2x loose bound costs ~2x the steps, and
-  random sampling can FIND violations but cannot CERTIFY a bound.
-- ✔ Band-limit fade w_k = 1 - s(clamp(4 f_k Dx - 1, 0, 1)),
-  s(x) = 3x^2 - 2x^3, Dx = t delta (smoothstep form, normative).
-- ✔ sRGB encode/decode round trip within tolerance.
-- ✔ Lanczos weights sum to 1 (separable, normalized).
-- ✔ GGX D normalization: integral 2 pi D(x,a) x dx = 1 within 1e-8
-  (oracle docs/oracles/ggx_oracle.py, checks 1-6 ported).
-- ✔ Smith masking identity within 2e-4; reciprocity within 1e-12;
-  visibility V = 1/((nl+s_l)(nv+s_v)) within 1e-9, finite at nl=0
-  (normative implementation form).
-- ✔ GGX importance sampler moments match quadrature within 2e-3.
-- ✔ White furnace (F=1): MC == quadrature, albedo <= 1 + 5 se.
-- ✔ SH: constant white environment gives E = pi (rho E / pi output).
-- ✔ GBR identity: G transform leaves images identical AND puts a null
-  direction in J; albedo-intensity pair gives a near-zero singular value.
-- ✔ PCG RXS-M-XS vs published vectors; pcg32(42,54) reproduces six
-  vectors; naive multiply disagrees with the BigInt oracle on
-  99,934/100,000 inputs (Math.imul required).
-- ✔ FNV-1a: "" = 0x811C9DC5, "foobar" = 0xBF9CF968; naive multiply
-  disagrees on 19,395/20,000 random strings (Math.imul required).
-  The "a" vector (0xE40C292C) does NOT catch the overflow.
-- ✔ 34.5 KB gz figure with reproduce command (docs/mvp.md).
-- ○ 3D silhouette normal-speed derivation: UNVALIDATED (from memory).
-  The 2D disk identities (coverage derivative = in-pixel arc length,
-  translation derivative = contour v.n) hold to five digits; the 3D
-  normal speed is flagged wherever it appears, pending an oracle.
-- ✔ Temporal history clamp: validated in the TS suite (was ○ PROVISIONAL).
-  Ghost 0.051 unclamped / 0.000 min-max / 0.003 variance-clip gamma=1;
-  static-noise cost 0.046 -> 0.075 min-max, 0.053 variance gamma=1,
-  gamma=3 matches unclamped.
+---
 
-V10.3, validated:
-- ✔ Tetrahedron normals are O(h) (measured, linear), central
-  differences O(h^2); the remembered "quadratic tetrahedron" claim
-  did not survive measurement and is not shipped.
-- ✔ Rodrigues == quaternion rotation matrix; ||q|| = 1 after 1e6 steps;
-  symplectic-Euler pendulum energy bounded.
-- ✔ Dropped sphere rests at y = r within 1e-6 (sleeping threshold);
-  e = 1 return height within O(h).
-- ✔ XR reprojection: identity pose gives x' = x (homogeneous); pure
-  rotation matches the rotation-only formula.
-- ✔ RBJ biquad DC gain = 1; Doppler approaching gives f_o > f_s.
-- ✔ Huber/IRLS downweights outliers; LM gain-ratio accept/reject;
-  Eikonal loss zero on a true SDF.
-- ✔ 8-bit sigma_n = 1/(255 sqrt(12)); n_eff < n in covariance.
-- ✔ Kahan/2Sum/ULP/tree-sum determinism harness; NaN/infinity policy
-  defined (infinities same sign: 0 apart; else infinite; NaN: infinite).
-- ✔ Rate-distortion: measured vs predicted MSE increase agree.
+## 1. Geometry
 
-V10.4, validated:
-- ✔ Noise derivatives: quintic fade S, S', S'' vanish at 0 and 1;
-  analytic value-noise gradient matches central differences to O(h^2);
-  brute-force max ||grad N|| never exceeds sqrt(3)*1.875*R; fBm chain
-  rule with fade weights held constant (documented approximation).
-- ✔ Conservative primitives audit: every SDF node kind audited against
-  the |f| <= true distance table (src/math/conservative.ts); non-uniform
-  scale uses f(S^-1 p)*min_i s_i; ||grad f|| approx 1 on exact rows.
-- ✔ Terrain distance: heightfield f = (y-h)/sqrt(1+s^2); plane y=x gives
-  exact g/sqrt(2); brute-force conservative on rough fields.
-- ✔ Cost model: R_dot = 2WH f_r (1-rho_fov); grazing N = L ln(d0/eps)/gamma.
-  Safe over-relaxation (omega in [1,2), ball-overlap check, retreat on
-  failure): zero tunneling on warped fields, 33% fewer steps (53.3 vs 79.6).
-- ✔ Geometry gradients: dt*/dtheta and dn/dtheta match re-solved central
-  differences (1e-6, 1e-4); 2D disk silhouette identities hold.
-- ✔ VARPRO: full Golub-Pereyra Jacobian matches FD to 2e-9; Kaufman
-  error 8.4e-3 (solver loop only); merged rho*E coefficient; rank
-  deficiency detected not hidden; cutoff policy for 1e-7..1e-11.
-- ✔ Temporal stability: EMA variance alpha/(2-alpha); ghosting 0.051 ->
-  0.000 min-max / 0.003 variance-clip (was ○ PROVISIONAL, now validated
-  in the TS suite); Halton (2,3); critically damped spring exact;
-  polynomial exp 3.8e-14 on [0,2]; One Euro adaptive.
-- ✔ Acoustics: Monte Carlo volume -> (4/3) pi R^3, area -> 4 pi R^2;
-  Sabine/Eyring RT60; Householder A^T A = I; FDN -60 dB per RT60;
-  SN3D/ACN (W,Y,Z,X), azimuth 0 lands in X.
+**Field:** $f:\mathbb R^3\to\mathbb R$ with $|f(\mathbf x)|\le \operatorname{dist}(\mathbf x,\partial\Omega)$, negative inside. A field that never overestimates distance is all the marcher needs.
 
-V10.4, unvalidated (○):
-- ○ 3D silhouette normal-speed derivation: still UNVALIDATED (from
-  memory); throws until validated numerically. The 2D identities are ✔.
-- ○ SH white-environment oracle (E = pi): owner's independent oracle
-  INCOMING; port on arrival.
-- ○ Error-state filter vs simulated gyro bias: owner's oracle INCOMING;
-  port on arrival.
+**Primitives:** sphere $\|\mathbf p\|-r$. Box, with $\mathbf q=|\mathbf p|-\mathbf b$: $\ \|\max(\mathbf q,0)\|+\min(\max(q_x,q_y,q_z),0)$.
 
-V10.5, validated:
-- ✔ Fixed-timestep loop: accumulator, TICK_DT = 1/60, MAX_STEPS = 5
-  spiral-of-death clamp, render alpha in [0, 1]; identical frame
-  sequences give identical tick streams.
-- ✔ Capsule character controller: two-sphere capsule vs the SDF field,
-  penetration resolved along the field gradient, ground band r +
-  groundEps, walkable n.y >= slopeLimit, steeper slopes slide via
-  gravity plus contact resolve (no stick); coyote ticks, buffered
-  jumps, and early-release jump cut defined in ticks; jump apex pinned
-  to the exact discrete model (within one tick of v^2/2g); dropped
-  capsule rests at r + halfHeight with no jitter by construction.
-- ✔ Deterministic input replay: seeded per-tick input log replayed
-  through the identical tick function; final state bit-identical
-  (ULP distance 0 on all components, 240 seeded ticks).
+**Operators:** union $\min(a,b)$, intersect $\max(a,b)$, subtract $\max(a,-b)$, and
 
-V10.5, unvalidated (○):
-- ○ Cross-language ports of the game-feel tick functions (C++, Python,
-  C#, Swift, Kotlin): the tick functions are pure float64 with no
-  platform transcendentals in the hot path, so the port is mechanical,
-  but it is unclaimed until ported and tested.
+$$\operatorname{smin}(a,b)=\min(a,b)-\tfrac k4h^2,\quad h=\tfrac{\max(k-|a-b|,0)}{k}$$
 
-DROPPED (do not implement): linear Kalman equations (error-state only),
-PCA as automatic semantic sliders (curated manual names only), separate
-albedo and intensity coefficients (merged rho*E only).
+**Lipschitz bounds** ✔ (zero violations on all five compositions):
+
+| Operator | $L$ |
+|---|---|
+| $\min,\max$ | $\max(L_a,L_b)$ |
+| sum | $L_a+L_b$ |
+| warp $f(\mathbf x+\mathbf w)$ | $L_f(1+L_w)$ |
+| displace $f+A\,n$ | $L_f+A\,L_n$ |
+| twist $kz$ | $L_f(1+k\,r_{\max})$ |
+
+**Noise** ✔, with $S(t)=6t^5-15t^4+10t^3$ and $S'(t)=30t^2(1-t)^2$:
+
+$$\|\nabla N\|\le\sqrt3\cdot1.875\,R,\qquad L_n=A\sqrt3\cdot1.875\,R\sum_k(2a)^kw_k$$
+
+**Terrain** ○: $\ f=\dfrac{y-h(x,z)}{\sqrt{1+s^2}}$, where $s$ is the slope bound.
+
+---
+
+## 2. Rendering
+
+**March** ✔ (the step form; the safe over-relaxation variant is ○):
+
+$$t_{k+1}=t_k+\frac{f(\mathbf o+t_k\mathbf d)}{L},\qquad \text{hit when } f<\varepsilon(t)=t\,\delta,\quad \delta=\frac{2\tan(\text{fov}/2)}{H}$$
+
+**Normal** (tetrahedron, $h=\varepsilon(t)$) ○: $\ \mathbf n\propto\sum_{i=1}^4\mathbf s_i\,f(\mathbf p+h\mathbf s_i)$
+
+**Shadow and AO** ○:
+
+$$s=\operatorname{clamp}\Big(\min_i\tfrac{k\,f(\mathbf p+t_i\mathbf l)}{t_i},0,1\Big),\qquad \text{AO}=\operatorname{clamp}\Big(1-k\sum_i2^{-i}\big(h_i-f(\mathbf p+h_i\mathbf n)\big),0,1\Big)$$
+
+**Shading** ○: Lambert $\rho/\pi$, and GGX:
+
+$$f_r=\frac\rho\pi+\frac{DFG}{4(\mathbf n\cdot\mathbf l)(\mathbf n\cdot\mathbf v)},\quad D=\frac{\alpha^2}{\pi((\mathbf n\cdot\mathbf h)^2(\alpha^2-1)+1)^2}$$
+
+**Environment light** ○: $\ E(\mathbf n)=\sum_{l\le2}\hat A_lL_{lm}Y_{lm}(\mathbf n)$ with $\hat A=(\pi,\tfrac{2\pi}3,\tfrac\pi4)$, and output $\rho E/\pi$.
+
+**Band-limit** ○: $\ w_k=1-s\big(\operatorname{clamp}(4f_k\Delta x-1,0,1)\big)$, $\ s(x)=3x^2-2x^3$, $\ \Delta x=t\delta$.
+
+**Display** ○: linear to sRGB is $12.92\,C$ for $C\le0.0031308$, else $1.055\,C^{1/2.4}-0.055$.
+
+**Stereo** ○: $\ \mathbf o_{L/R}=\mathbf o_{\text{head}}\mp\tfrac{\text{IPD}}2R\mathbf e_x$, $\ \mathbf d=R\,\mathbf d_{\text{eye}}/\|\mathbf d_{\text{eye}}\|$.
+
+**Reprojection** ○: $\ \mathbf p=\mathbf o+t\mathbf d$, $\ \mathbf x'\sim K'R'^{-1}(\mathbf p-\mathbf o')$.
+
+---
+
+## 3. Solving
+
+**Loss and step:**
+
+$$\mathcal L=\tfrac12\sum_j(\hat y_j-y_j)^2,\qquad (J^\top J+\lambda\operatorname{diag}(J^\top J))\,\delta=-J^\top r$$
+
+Accept the step if the gain ratio $\varrho=\dfrac{\mathcal L(\theta)-\mathcal L(\theta+\delta)}{\frac12\delta^\top(\lambda D\delta-g)}>0$ ○.
+
+**Geometry gradients** ✔ (match finite differences to about $10^{-10}$):
+
+$$\frac{\partial t^*}{\partial\theta}=-\frac{\partial_\theta f}{\nabla f\cdot\mathbf d},\qquad \frac{d\mathbf n}{d\theta}=\frac{(I-\mathbf n\mathbf n^\top)\big(H\mathbf d\,\tfrac{\partial t^*}{\partial\theta}+\partial_\theta\nabla f\big)}{\|\nabla f\|}$$
+
+**Silhouette term** (2D coverage identity ✔, 3D derivation ○):
+
+$$\oint(c_{\text{in}}-c_{\text{out}})(\mathbf v_\theta\!\cdot\mathbf n_b)\,d\ell$$
+
+**Variable projection** ✔, with $\hat y=\Phi(\theta)\mathbf c$ and constant-rank $\Phi$:
+
+$$\mathbf c=\Phi^+y,\quad r=P^\perp y,\quad \frac{\partial r}{\partial\theta_k}=-\big[P^\perp D_k\Phi^++(P^\perp D_k\Phi^+)^\top\big]y$$
+
+Fit the merged coefficient $\rho E$, not $\rho$ and $E$ separately.
+
+**Diagnostics** ○: normalize the columns of $J$, then $J^\top J=V\Sigma^2V^\top$ and $\operatorname{Cov}\approx\sigma_n^2(J^\top J)^{-1}$. For an 8-bit target use $\sigma_n=\tfrac1{255\sqrt{12}}$ and $n_{\text{eff}}<n$.
+
+**Regularization and bounds** ○: $\ \min\|r\|^2+\mu\|\Gamma\theta\|^2$, and $\ \theta=\theta_{lo}+(\theta_{hi}-\theta_{lo})\,\sigma(\phi)$.
+
+**Texture loss** ○: log power spectrum plus the sorted-pixel Wasserstein term.
+
+---
+
+## 4. Interface and size
+
+**Slider map** ○: $\ \mathbf c=\mathbf a u^2+\mathbf b u+\mathbf c_0$, clamped and checked for monotonicity.
+
+**Parameter reduction** ○: $\ \mathbf z=V_k^\top(\theta-\bar\theta)$, with $V$ from the SVD of centered example parameters. The sliders need curated names.
+
+**Size curve** ○: $\ \Delta_i=\sqrt{\tfrac{12\,n\,D}{p\,s_i}}$, $\ b_i=\log_2\tfrac{\theta_{hi,i}-\theta_{lo,i}}{\Delta_i}$, and AIC $=n\ln\tfrac{\text{RSS}}n+2k$.
+
+---
+
+## 5. XR and motion
+
+**Rotation:** $q=(\cos\tfrac\theta2,\sin\tfrac\theta2\mathbf n)$ and $\mathbf v'=q\mathbf vq^*$ ○. Slerp is $\tfrac{\sin((1-u)\Omega)}{\sin\Omega}q_0+\tfrac{\sin(u\Omega)}{\sin\Omega}q_1$ ○.
+
+**Tracking filter** (error-state, untested) ○:
+
+$$\hat q\leftarrow\hat q\otimes\exp((\omega_m-\hat b)\Delta t),\qquad P\leftarrow FPF^\top+Q,\qquad K=PH^\top(HPH^\top+R_m)^{-1}$$
+
+**Contact against the field** ○: penetration when $f(\mathbf c)<r$, with $\mathbf n=\nabla f/\|\nabla f\|$ and contact point $\mathbf c-f(\mathbf c)\mathbf n$.
+
+**Temporal:**
+- EMA $C_t=(1-\alpha)\tilde C_{t-1}+\alpha c_t$ has $N_{\text{eff}}=\tfrac{2-\alpha}\alpha$ ✔.
+- Critically damped spring: $e(t)=(e_0+(v_0+\omega e_0)t)e^{-\omega t}$ ✔.
+- Halton radical inverse ✔.
+- History clamp is a trade: $\gamma=1$ cut ghost error from 0.051 to 0.003 at the cost of about 15% more noise ✔ (toy 1D model).
+
+---
+
+## 6. Determinism
+
+$$\text{FNV: } h\leftarrow\text{imul}(h\oplus b,\,16777619)\ \ ✔,\qquad \text{PCG hash: all multiplies via imul}\ \ ✔$$
+
+$$u=(h\gg8)\,2^{-24}\ \ ○,\qquad \text{ulp}(a,b)=|\text{key}(a)-\text{key}(b)|\ \ ✔$$
+
+---
+
+## Dropped from earlier lists
+
+- The linear Kalman equations, replaced by the error-state filter above.
+- PCA as automatic semantic sliders, replaced by PCA plus manual naming.
+- Separate albedo and intensity coefficients, replaced by the merged coefficient.
