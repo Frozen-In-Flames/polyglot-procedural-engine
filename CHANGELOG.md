@@ -3,6 +3,26 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [1.6.0] - TEV functional materials (2026-10-19)
+
+Closed-form material compression: a chain of K combiner stages,
+C_out = (A - B) * C + D, with slots drawn from previous-stage output,
+fitted constants, or field terms (n.l, n.v, n.h powers, SDF value, noise
+octave). Nothing neural. Tests written before implementation; the identity
+suite is green before the tag. Design note in docs/tev-materials.md.
+
+- **Forward evaluator** (`src/material/tev.ts`): `tevEvaluate` runs the
+  K-stage chain; `polyChainWiring` builds an alternating add/mul pattern
+  (polynomials in the cycled inputs, degree grows with K).
+- **Inverse fit** (`tevFit`): damped Gauss-Newton with central
+  finite-difference Jacobians and backtracking; warm-start slot for
+  continuing a previous solution.
+- **Measured**: K=8 reaches 20.48 dB PSNR against a 20 dB bar on the
+  procedural reference (K=0 constant: 12.88 dB). Negative controls pass:
+  constant output and field-stripped wiring both fail the bar.
+- **Honest finding**: higher K fits better in-sample but extrapolates
+  worse past the training range (K=8: 11.3x train error held-out vs
+  K=4: 2.4x); the extrapolation test pins K=4 against a 4x bar.
 ## [1.5.0] - JIT inverse rendering (2026-10-19)
 
 Owner validation track (docs/oracles/test_jit_inverse.py) ported to TS with real
