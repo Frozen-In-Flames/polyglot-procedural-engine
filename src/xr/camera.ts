@@ -8,10 +8,12 @@
 // Position+rotation reprojection using march depth t:
 //   p = o + t d,   x' ~ K' R'^{-1} (p - o').
 //
-// Tracking uses the ERROR-STATE filter (not the linear Kalman form):
-//   qhat <- qhat tensor exp((omega_m - bhat) dt),
-//   P <- F P F^T + Q,
-//   K = P H^T (H P H^T + R_m)^{-1}.
+// Tracking uses the ERROR-STATE filter (not the linear Kalman form),
+// world-frame (left) error: R_true = Exp(dtheta) R_hat:
+//   qhat <- qhat tensor Exp((omega_m - bhat) dt)   (nominal propagation),
+//   P <- F P F^T + Q,  F = [[I, -dt R_hat], [0, I]],
+//   K = P H^T (H P H^T + R_m)^{-1},  H = [R_hat^T [g_w]_x, 0],
+//   qhat <- Exp(dx_theta) tensor qhat,  bhat <- bhat + dx_b,  no reset.
 // The linear Kalman equations are dropped per the canonical reference.
 
 import type { Vec3 } from '../math/vec.js';
@@ -93,20 +95,87 @@ export function reprojectPoint(
 }
 
 // ---------------------------------------------------------------------------
-// Error-state attitude filter (quaternion + gyro bias).
-// State: qhat (unit quaternion), bhat (gyro bias), P (6x6 error covariance
-// for [dtheta, db]). Predict:
-//   qhat <- qhat tensor exp((omega_m - bhat) dt)
-//   P <- F P F^T + Q
-// Update with a vector measurement z (e.g. gravity), predicted h(qhat):
-//   K = P H^T (H P H^T + R_m)^{-1}, dx = K (z - h), apply and reset.
+// Error-state attitude filter, WORLD-frame (left) error.
+// R_true = Exp(dtheta) R_hat; bias error db = b_true - b_hat (bias in the
+// body frame). State: qhat (unit quaternion), bhat (gyro bias), P (6x6 error
+// covariance for [dtheta, db]). Predict:
+//   qhat <- qhat tensor Exp((omega_m - bhat) dt)
+//   P <- F P F^T + Q,  F = [[I, -dt R_hat], [0, I]]
+// Update with a body-frame vector measurement z of the known world
+// reference g_w, predicted h = R_hat^T g_w:
+//   K = P H^T (H P H^T + R_m)^{-1},  H = [R_hat^T [g_w]_x, 0],
+//   dx = K (z - h); qhat <- Exp(dx_theta) tensor qhat; bhat <- bhat + dx_b.
+// No reset Jacobian and no reset step: the world-frame error needs none.
 // ---------------------------------------------------------------------------
 
-function quatExp(wdt: Vec3): Quat {
+/** Exponential map: rotation vector -> unit quaternion [x, y, z, w]. */
+export function quatExp(wdt: Vec3): Quat {
   const th = Math.hypot(wdt[0], wdt[1], wdt[2]);
   if (th < 1e-12) return [0, 0, 0, 1];
   const s = Math.sin(th / 2) / th;
   return [wdt[0] * s, wdt[1] * s, wdt[2] * s, Math.cos(th / 2)];
+}
+
+/** Rotation matrix (3x3, body to world) for quaternion q = [x, y, z, w]. */
+export function quatToMat3(q: Quat): Mat3 {
+  const [x, y, z, w] = q;
+  return [
+    [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+    [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+    [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+  ];
+}
+
+function skew3(v: Vec3): number[][] {
+  return [
+    [0, -v[2], v[1]],
+    [v[2], 0, -v[0]],
+    [-v[1], v[0], 0],
+  ];
+}
+
+/**
+ * World-frame error transition: F = [[I, -dt R_hat], [0, I]] (6x6).
+ * The attitude error lives in the world frame, so the bias block couples
+ * through -dt R_hat, not -dt I.
+ */
+export function esfPredictF(q: Quat, dt: number): number[][] {
+  const R = quatToMat3(q);
+  const F: number[][] = Array.from({ length: 6 }, (_, i) =>
+    Array.from({ length: 6 }, (_, j) => (i === j ? 1 : 0)),
+  );
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 3; j++) F[i][j + 3] = -dt * R[i][j];
+  }
+  return F;
+}
+
+/**
+ * World-frame measurement Jacobian: H = [R_hat^T [g_w]_x, 0] (3x6).
+ * The yaw column (world z) is exactly zero: gravity cannot observe world
+ * yaw, independent of the estimate.
+ */
+export function esfUpdateH(q: Quat, g_w: Vec3): number[][] {
+  const R = quatToMat3(q);
+  const sk = skew3(g_w);
+  const H: number[][] = Array.from({ length: 3 }, () => new Array(6).fill(0));
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 3; j++) {
+      H[i][j] = R[0][i] * sk[0][j] + R[1][i] * sk[1][j] + R[2][i] * sk[2][j];
+    }
+  }
+  return H;
+}
+
+/**
+ * Apply the error-state correction (world-frame / left error):
+ * qhat <- Exp(dtheta) tensor qhat, bhat <- bhat + db. No reset step.
+ */
+export function esfApplyCorrection(s: EsfState, dtheta: Vec3, db: Vec3): void {
+  s.q = multiply(quatExp(dtheta), s.q);
+  const n = Math.hypot(s.q[0], s.q[1], s.q[2], s.q[3]) || 1;
+  s.q = [s.q[0] / n, s.q[1] / n, s.q[2] / n, s.q[3] / n];
+  s.b = [s.b[0] + db[0], s.b[1] + db[1], s.b[2] + db[2]];
 }
 
 export interface EsfState {
@@ -143,24 +212,12 @@ function matT6(A: number[][]): number[][] {
 /** Predict with gyro measurement omega_m over dt. */
 export function esfPredict(s: EsfState, omega_m: Vec3, dt: number, qVar: number, bVar: number): void {
   const w: Vec3 = [omega_m[0] - s.b[0], omega_m[1] - s.b[1], omega_m[2] - s.b[2]];
+  // Nominal propagation (frame-independent): qhat <- qhat tensor Exp(w_hat dt).
   s.q = multiply(s.q, quatExp([w[0] * dt, w[1] * dt, w[2] * dt]));
   const n = Math.hypot(s.q[0], s.q[1], s.q[2], s.q[3]) || 1;
   s.q = [s.q[0] / n, s.q[1] / n, s.q[2] / n, s.q[3] / n];
-  // F = [I - dt [w]_x, -dt I; 0, I]; P <- F P F^T + Q.
-  const F: number[][] = Array.from({ length: 6 }, (_, i) =>
-    Array.from({ length: 6 }, (_, j) => (i === j ? 1 : 0)),
-  );
-  const sk: number[][] = [
-    [0, -w[2], w[1]],
-    [w[2], 0, -w[0]],
-    [-w[1], w[0], 0],
-  ];
-  for (let i = 0; i < 3; i++) {
-    for (let j = 0; j < 3; j++) {
-      F[i][j] -= dt * sk[i][j];
-      F[i][j + 3] = i === j ? -dt : 0;
-    }
-  }
+  // World-frame F = [[I, -dt R_hat], [0, I]]; P <- F P F^T + Q.
+  const F = esfPredictF(s.q, dt);
   const FP = matMul6(F, s.P);
   const FPFt = matMul6(FP, matT6(F));
   for (let i = 0; i < 6; i++) {
@@ -188,12 +245,8 @@ export function esfUpdate(s: EsfState, z: Vec3, g_w: Vec3, rVar: number): void {
   // Predicted measurement h = R(qhat)^T g_w.
   const qc: Quat = [-s.q[0], -s.q[1], -s.q[2], s.q[3]];
   const h = quatRotate(qc, g_w);
-  // H (3x6) = [skew(h), 0].
-  const H: number[][] = [
-    [0, -h[2], h[1], 0, 0, 0],
-    [h[2], 0, -h[0], 0, 0, 0],
-    [-h[1], h[0], 0, 0, 0, 0],
-  ];
+  // World-frame H = [R_hat^T [g_w]_x, 0] (3x6).
+  const H = esfUpdateH(s.q, g_w);
   // S = H P H^T + R_m I (3x3).
   const HP: number[][] = Array.from({ length: 3 }, () => new Array(6).fill(0));
   for (let i = 0; i < 3; i++) {
@@ -227,11 +280,9 @@ export function esfUpdate(s: EsfState, z: Vec3, g_w: Vec3, rVar: number): void {
   for (let i = 0; i < 6; i++) {
     for (let j = 0; j < 3; j++) dx[i] += K[i][j] * res[j];
   }
-  // Apply: q <- q tensor exp(dx_theta), b <- b + dx_b.
-  s.q = multiply(s.q, quatExp([dx[0], dx[1], dx[2]]));
-  const n = Math.hypot(s.q[0], s.q[1], s.q[2], s.q[3]) || 1;
-  s.q = [s.q[0] / n, s.q[1] / n, s.q[2] / n, s.q[3] / n];
-  s.b = [s.b[0] + dx[3], s.b[1] + dx[4], s.b[2] + dx[5]];
+  // Apply (world-frame / left error): qhat <- Exp(dx_theta) tensor qhat,
+  // bhat <- bhat + dx_b. No reset step.
+  esfApplyCorrection(s, [dx[0], dx[1], dx[2]], [dx[3], dx[4], dx[5]]);
   // P <- (I - K H) P.
   const KH: number[][] = Array.from({ length: 6 }, () => new Array(6).fill(0));
   for (let i = 0; i < 6; i++) {

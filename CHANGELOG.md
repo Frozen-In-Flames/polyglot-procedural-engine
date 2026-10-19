@@ -3,6 +3,31 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [1.4.1] - V10.5 spec deltas (2026-10-19)
+
+Owner validation oracles (SH, error-state filter) applied as spec deltas;
+GGX already clean. Tests written before implementation; the identity suite
+is green before the tag. Zero new dependencies.
+
+- **Error-state filter, world-frame form** (`src/xr/camera.ts`): replaced
+  the body-frame (right-error) filter with the world-frame (left) error
+  form per the owner oracle. F = [[I, -dt R_hat], [0, I]],
+  H = [R_hat^T [g_w]_x, 0], injection qhat <- Exp(dx_theta) tensor qhat,
+  bhat <- bhat + dx_b, no reset Jacobian and no reset step. The body-frame
+  form was overconfident (mean NEES 20 vs ~6); the world-frame form holds
+  NEES inside the 99% band. New exports: quatExp, quatToMat3,
+  esfPredictF, esfUpdateH, esfApplyCorrection. 7 tests.
+- **SH irradiance** (`src/inverse/forward.ts`): E(n) clamped at 0 at the
+  output (sharp-lobe Gibbs undershoot reaches ~3% of peak); no windowing
+  anywhere on irradiance (audit clean). Policy documented in code: SH-9
+  for soft sky and diffuse environment only, sharp lights stay analytic.
+  Added shIrradianceRaw, SH_C shader constants, and shIrradianceShader
+  (polynomial form, matches the general form exactly). 6 tests.
+- **GGX audit**: the visibility form V = 1/((nl+s_l)(nv+s_v)) is the only
+  form in every specular path (cookTorranceGgx, reference renderer); no
+  leftover clamps on n.l / n.v. No code change; the v1.2.0 oracle port
+  already covers it.
+
 ## [1.4.0] - V10.5 "Game feel" (2026-10-19)
 
 Three game systems, math-first, zero new dependencies (minor version per

@@ -205,9 +205,19 @@ export function sampleGgxCosTheta(xi: number, alpha: number): number {
 // Spherical-harmonics diffuse environment (9 coefficients, l = 0..2).
 //
 // E(n) = sum_{l=0..2} sum_{m=-l..l} Ahat_l L_{lm} Y_{lm}(n),
-// Ahat_0 = pi, Ahat_1 = 2pi/3, Ahat_2 = pi/4 (irradiance convolution).
-// The formula yields IRRADIANCE E; Lambertian outgoing radiance is
-// rho * E / pi. Do not be off by pi.
+// Ahat_0 = pi, Ahat_1 = 2pi/3, Ahat_2 = pi/4 (irradiance convolution,
+// derived from the clamped cosine: A_l = 2 pi int_0^1 x P_l(x) dx).
+// The basis is orthonormal: Y00 = 1/(2 sqrt(pi)). The formula yields
+// IRRADIANCE E; Lambertian outgoing radiance is rho * E / pi.
+// Do not be off by pi.
+//
+// POLICY (per the SH oracle): SH-9 is for soft sky and diffuse environment
+// light only. A sharp lobe (sun) reconstructed through 9 coefficients
+// undershoots below zero by a few percent of peak and carries up to 94%
+// relative error in lit regions, so sharp lights stay analytic and never
+// go through SH. Windowing the coefficients to suppress ringing is wrong
+// for irradiance (a Hann window raised median error from 4% to 25%):
+// do not window.
 // ---------------------------------------------------------------------------
 
 /** Irradiance convolution constants Ahat_0..2. */
@@ -229,13 +239,53 @@ export function shBasis(n: Vec3): number[] {
   ];
 }
 
-/** Irradiance E(n) from 9 SH lighting coefficients. */
-export function shIrradiance(n: Vec3, L: number[]): number {
+/** Raw (unclamped) SH irradiance. Can undershoot below 0 on sharp lobes. */
+export function shIrradianceRaw(n: Vec3, L: number[]): number {
   const Y = shBasis(n);
   return (
     SH_AHAT[0] * L[0] * Y[0] +
     SH_AHAT[1] * (L[1] * Y[1] + L[2] * Y[2] + L[3] * Y[3]) +
     SH_AHAT[2] * (L[4] * Y[4] + L[5] * Y[5] + L[6] * Y[6] + L[7] * Y[7] + L[8] * Y[8])
+  );
+}
+
+/**
+ * Irradiance E(n) from 9 SH lighting coefficients, clamped at 0.
+ * Sharp-lobe Gibbs undershoot reaches about 3% of peak; negative
+ * irradiance is unphysical, so the output is clamped.
+ */
+export function shIrradiance(n: Vec3, L: number[]): number {
+  return Math.max(0, shIrradianceRaw(n, L));
+}
+
+/**
+ * Shader-form irradiance constants, derived from Ahat and the basis
+ * normalization (oracle 5b): c1 = A2 * 0.546274, c2 = A1 * 0.488603 / 2,
+ * c3 = 3 * A2 * 0.315392, c4 = A0 * 0.282095, c5 = A2 * 0.315392.
+ */
+export const SH_C = {
+  c1: SH_AHAT[2] * 0.5462742152960396,
+  c2: (SH_AHAT[1] * 0.4886025119029199) / 2,
+  c3: 3 * SH_AHAT[2] * 0.31539156525252005,
+  c4: SH_AHAT[0] * 0.28209479177387814,
+  c5: SH_AHAT[2] * 0.31539156525252005,
+} as const;
+
+/**
+ * Shader-form irradiance: polynomial in n, no basis evaluation.
+ * Coefficient order is [00, 1-1, 10, 11, 2-2, 2-1, 20, 21, 22].
+ * Matches shIrradianceRaw exactly; the caller clamps if needed.
+ */
+export function shIrradianceShader(n: Vec3, L: number[]): number {
+  const [x, y, z] = n;
+  const { c1, c2, c3, c4, c5 } = SH_C;
+  return (
+    c1 * L[8] * (x * x - y * y) +
+    c3 * L[6] * z * z +
+    c4 * L[0] -
+    c5 * L[6] +
+    2 * c1 * (L[4] * x * y + L[7] * x * z + L[5] * y * z) +
+    2 * c2 * (L[3] * x + L[1] * y + L[2] * z)
   );
 }
 
