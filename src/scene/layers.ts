@@ -1,0 +1,381 @@
+// scene/layers.ts - dimensional layering: 2D, 2.5D, 3D and 4D elements
+// composite in one field of view through one march.
+//
+// Dimensionality is a property of how a layer answers "what is the field
+// value here", not a separate pipeline:
+//   2d   - flat field in billboard space (camera-facing or fixed orientation)
+//   2.5d - plane layer { depth, parallaxScale, content2D }; the multiplane
+//          effect as arithmetic: content coordinate v = uvP - s * uvC
+//   3d   - standard SDF, sphere-traced with the documented march
+//          (t_{k+1} = t_k + f(o + t_k d))
+//   4d   - time-varying field f(p, t), 3D plus time; evaluated at frame time
+//
+// One march evaluates every layer and keeps the nearest hit, so occlusion
+// falls out of depth order. Craft-material looks ride the v1.6.0 TEV
+// material system; layers take color callbacks and never reimplement them.
+//
+// Gameplay planes: a PlaneStack is an ordered stack of 2.5D layers the
+// player inhabits and hops between. Hopping is a depth translation of the
+// player, never a camera trick.
+import type { Vec2, Vec3 } from '../math/vec.js';
+import { finiteJacobian } from '../inverse/conditioning.js';
+
+export type DimKind = '2d' | '2.5d' | '3d' | '4d';
+
+export interface Ray {
+  origin: Vec3;
+  dir: Vec3; // normalized
+}
+
+export interface PinholeCam {
+  pos: Vec3;
+  target: Vec3;
+  fovY: number;
+  aspect: number;
+}
+
+export interface LayerHit {
+  depth: number; // ray distance; Infinity on a clean miss
+  color: Vec3;
+  kind: DimKind | 'none';
+  layer: number; // index into the scene list; -1 on a miss
+}
+
+export interface Layer2D {
+  kind: '2d';
+  center: Vec3;
+  size: Vec2; // full width/height in world units
+  /** 2D SDF in uv space, uv in [-1, 1]^2; surface where field2 <= 0. */
+  field2: (uv: Vec2) => number;
+  color: (uv: Vec2) => Vec3;
+  facing: 'camera' | 'fixed';
+  fixedNormal?: Vec3; // required when facing === 'fixed'
+}
+
+export interface Layer25D {
+  kind: '2.5d';
+  center: Vec3;
+  normal: Vec3; // unit, faces the viewer
+  size: Vec2; // physical quad extent in world units
+  depth: number; // gameplay plane depth tag
+  parallaxScale: number; // content shift per unit camera translation
+  /** Content in parallax-shifted uv space; surface where dist <= 0. */
+  content: (v: Vec2) => { dist: number; color: Vec3 };
+}
+
+export interface Solid3D {
+  kind: '3d';
+  sdf: (p: Vec3) => number;
+  shade: (p: Vec3, n: Vec3) => Vec3;
+}
+
+export interface Field4D {
+  kind: '4d';
+  field: (p: Vec3, t: number) => number;
+  shade: (p: Vec3, t: number, n: Vec3) => Vec3;
+  time: number; // current frame time
+}
+
+export type Layer = Layer2D | Layer25D | Solid3D | Field4D;
+
+export interface MarchOpts {
+  steps?: number;
+  maxDist?: number;
+  eps?: number;
+}
+
+export const MARCH_STEPS = 128;
+export const MARCH_EPS = 1e-3;
+export const MARCH_MAX_DIST = 100;
+
+const MISS: LayerHit = { depth: Infinity, color: [0, 0, 0], kind: 'none', layer: -1 };
+
+function sub3(a: Vec3, b: Vec3): Vec3 {
+  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+}
+function dot3(a: Vec3, b: Vec3): number {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+function cross3(a: Vec3, b: Vec3): Vec3 {
+  return [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0],
+  ];
+}
+function norm3(a: Vec3): Vec3 {
+  const l = Math.sqrt(dot3(a, a)) || 1;
+  return [a[0] / l, a[1] / l, a[2] / l];
+}
+
+/** Orthonormal basis for a plane with the given normal. */
+function planeBasis(n: Vec3): { u: Vec3; v: Vec3 } {
+  const up: Vec3 = Math.abs(n[1]) > 0.99 ? [1, 0, 0] : [0, 1, 0];
+  const u = norm3(cross3(n, up));
+  const v = cross3(n, u);
+  return { u, v };
+}
+
+/** Ray through normalized device coords nx, ny in [-1, 1]. */
+export function pinholeRay(cam: PinholeCam, nx: number, ny: number): Ray {
+  const fwd = norm3(sub3(cam.target, cam.pos));
+  const right = norm3(cross3([0, 1, 0], fwd));
+  const up = cross3(fwd, right);
+  const t = Math.tan(cam.fovY / 2);
+  const dir = norm3([
+    fwd[0] + right[0] * nx * t * cam.aspect + up[0] * ny * t,
+    fwd[1] + right[1] * nx * t * cam.aspect + up[1] * ny * t,
+    fwd[2] + right[2] * nx * t * cam.aspect + up[2] * ny * t,
+  ]);
+  return { origin: [cam.pos[0], cam.pos[1], cam.pos[2]], dir };
+}
+
+/**
+ * Parallax-shifted content coordinate for a 2.5D layer.
+ * v = uvP - s * uvC: under camera translation the sampled content shifts by
+ * exactly s times the planar camera delta. s = 0 reads static.
+ */
+export function parallaxUV(layer: Layer25D, p: Vec3, camPos: Vec3): Vec2 {
+  const n = norm3(layer.normal);
+  const { u, v } = planeBasis(n);
+  const rel = sub3(p, layer.center);
+  const relC = sub3(camPos, layer.center);
+  const s = layer.parallaxScale;
+  return [
+    dot3(rel, u) - s * dot3(relC, u),
+    dot3(rel, v) - s * dot3(relC, v),
+  ];
+}
+
+function rayPlane(origin: Vec3, dir: Vec3, center: Vec3, normal: Vec3): number {
+  const n = norm3(normal);
+  const dn = dot3(dir, n);
+  if (dn >= 0) return Infinity; // backface or parallel: no front hit
+  const t = dot3(sub3(center, origin), n) / dn;
+  return t > 0 ? t : Infinity;
+}
+
+function at(ray: Ray, t: number): Vec3 {
+  return [
+    ray.origin[0] + ray.dir[0] * t,
+    ray.origin[1] + ray.dir[1] * t,
+    ray.origin[2] + ray.dir[2] * t,
+  ];
+}
+
+function intersectLayer2D(layer: Layer2D, ray: Ray, camPos: Vec3, index: number): LayerHit {
+  const n = layer.facing === 'camera'
+    ? norm3(sub3(camPos, layer.center))
+    : norm3(layer.fixedNormal ?? [0, 0, -1]);
+  const t = rayPlane(ray.origin, ray.dir, layer.center, n);
+  if (!isFinite(t)) return MISS;
+  const p = at(ray, t);
+  const { u, v } = planeBasis(n);
+  const rel = sub3(p, layer.center);
+  const uv: Vec2 = [
+    dot3(rel, u) / (layer.size[0] / 2),
+    dot3(rel, v) / (layer.size[1] / 2),
+  ];
+  if (Math.abs(uv[0]) > 1 || Math.abs(uv[1]) > 1) return MISS;
+  if (layer.field2(uv) > 0) return MISS;
+  return { depth: t, color: layer.color(uv), kind: '2d', layer: index };
+}
+
+function intersectLayer25D(layer: Layer25D, ray: Ray, camPos: Vec3, index: number): LayerHit {
+  const t = rayPlane(ray.origin, ray.dir, layer.center, layer.normal);
+  if (!isFinite(t)) return MISS;
+  const p = at(ray, t);
+  const n = norm3(layer.normal);
+  const { u, v } = planeBasis(n);
+  const rel = sub3(p, layer.center);
+  const qu: Vec2 = [dot3(rel, u), dot3(rel, v)];
+  if (Math.abs(qu[0]) > layer.size[0] / 2 || Math.abs(qu[1]) > layer.size[1] / 2) return MISS;
+  const c = layer.content(parallaxUV(layer, p, camPos));
+  if (c.dist > 0) return MISS;
+  return { depth: t, color: c.color, kind: '2.5d', layer: index };
+}
+
+/** Standard sphere tracing: t_{k+1} = t_k + f(o + t_k d). */
+function sphereTrace(
+  field: (p: Vec3) => number,
+  ray: Ray,
+  opts: MarchOpts = {},
+): number {
+  const steps = opts.steps ?? MARCH_STEPS;
+  const eps = opts.eps ?? MARCH_EPS;
+  const maxDist = opts.maxDist ?? MARCH_MAX_DIST;
+  let t = 0;
+  for (let i = 0; i < steps; i++) {
+    const p = at(ray, t);
+    const f = field(p);
+    if (f < eps) return t;
+    t += f;
+    if (t > maxDist) return Infinity;
+  }
+  return Infinity;
+}
+
+function centralNormal(field: (p: Vec3) => number, p: Vec3): Vec3 {
+  const h = 1e-4;
+  const dx = field([p[0] + h, p[1], p[2]]) - field([p[0] - h, p[1], p[2]]);
+  const dy = field([p[0], p[1] + h, p[2]]) - field([p[0], p[1] - h, p[2]]);
+  const dz = field([p[0], p[1], p[2] + h]) - field([p[0], p[1], p[2] - h]);
+  return norm3([dx, dy, dz]);
+}
+
+function intersectSolid3D(layer: Solid3D, ray: Ray, index: number, opts: MarchOpts): LayerHit {
+  const t = sphereTrace(layer.sdf, ray, opts);
+  if (!isFinite(t)) return MISS;
+  const p = at(ray, t);
+  const n = centralNormal(layer.sdf, p);
+  return { depth: t, color: layer.shade(p, n), kind: '3d', layer: index };
+}
+
+function intersectField4D(layer: Field4D, ray: Ray, index: number, opts: MarchOpts): LayerHit {
+  const field = (p: Vec3) => layer.field(p, layer.time);
+  const t = sphereTrace(field, ray, opts);
+  if (!isFinite(t)) return MISS;
+  const p = at(ray, t);
+  const n = centralNormal(field, p);
+  return { depth: t, color: layer.shade(p, layer.time, n), kind: '4d', layer: index };
+}
+
+/** One evaluation pass over every layer; the nearest hit wins. */
+export function intersectLayer(
+  layer: Layer,
+  ray: Ray,
+  camPos: Vec3,
+  index = 0,
+  opts: MarchOpts = {},
+): LayerHit {
+  switch (layer.kind) {
+    case '2d': return intersectLayer2D(layer, ray, camPos, index);
+    case '2.5d': return intersectLayer25D(layer, ray, camPos, index);
+    case '3d': return intersectSolid3D(layer, ray, index, opts);
+    case '4d': return intersectField4D(layer, ray, index, opts);
+  }
+}
+
+/** Composite a full layer stack in depth order. Occlusion falls out of the march. */
+export function marchScene(
+  layers: Layer[],
+  ray: Ray,
+  camPos: Vec3,
+  opts: MarchOpts = {},
+): LayerHit {
+  let best: LayerHit = MISS;
+  for (let i = 0; i < layers.length; i++) {
+    const h = intersectLayer(layers[i], ray, camPos, i, opts);
+    if (h.depth < best.depth) best = h;
+  }
+  return best;
+}
+
+// ---------------------------------------------------------------------------
+// Discrete gameplay layers: plane stacks the player hops between
+// ---------------------------------------------------------------------------
+
+export interface PlaneStack {
+  /** Ordered by depth; the player inhabits one plane at a time. */
+  planes: Layer25D[];
+}
+
+export interface PlayerOnPlanes {
+  plane: number;
+  uv: Vec2; // in-plane position; untouched by hops
+}
+
+/** Hop between gameplay planes: a pure depth translation of the player. */
+export function hopPlane(stack: PlaneStack, s: PlayerOnPlanes, dir: 1 | -1): PlayerOnPlanes {
+  const n = stack.planes.length;
+  const plane = Math.min(n - 1, Math.max(0, s.plane + dir));
+  return { plane, uv: [s.uv[0], s.uv[1]] };
+}
+
+/** World-space distance covered by a hop: the planes' depth separation. */
+export function hopDistance(stack: PlaneStack, from: number, to: number): number {
+  return Math.abs(stack.planes[to].depth - stack.planes[from].depth);
+}
+
+/** Solid content at a plane uv: the per-plane collision query. */
+export function planeContentAt(stack: PlaneStack, plane: number, uv: Vec2): boolean {
+  return stack.planes[plane].content(uv).dist <= 0;
+}
+
+// ---------------------------------------------------------------------------
+// Inverse rendering is uniform across dimensions: one Gauss-Newton fit
+// ---------------------------------------------------------------------------
+
+function solveDense(A: number[][], b: number[]): number[] {
+  const n = b.length;
+  const M = A.map((row, i) => [...row, b[i]]);
+  for (let c = 0; c < n; c++) {
+    let piv = c;
+    for (let r = c + 1; r < n; r++) {
+      if (Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
+    }
+    [M[c], M[piv]] = [M[piv], M[c]];
+    const d = M[c][c] || 1e-300;
+    for (let r = 0; r < n; r++) {
+      if (r === c) continue;
+      const f = M[r][c] / d;
+      for (let k = c; k <= n; k++) M[r][k] -= f * M[c][k];
+    }
+  }
+  return M.map((row, i) => row[n] / (row[i] || 1e-300));
+}
+
+export interface FitOpts {
+  iters?: number;
+  lambda?: number;
+  tol?: number;
+}
+
+export interface FitResult {
+  theta: number[];
+  iters: number;
+  finalCost: number;
+}
+
+/**
+ * Damped Gauss-Newton on 1/2 ||render(theta) - y||^2 with central-difference
+ * Jacobians (the engine FD convention). The forward model carries the
+ * dimensionality; the solver never sees it: a 2D tint and a 3D light
+ * azimuth are both just entries of theta.
+ */
+export function fitLayerParams(
+  render: (theta: number[]) => number[],
+  theta0: number[],
+  y: number[],
+  opts: FitOpts = {},
+): FitResult {
+  const iters = opts.iters ?? 25;
+  const lambda = opts.lambda ?? 1e-3;
+  const tol = opts.tol ?? 1e-8;
+  const n = theta0.length;
+  let theta = theta0.slice();
+  let cost = Infinity;
+  let done = 0;
+  for (let it = 0; it < iters; it++) {
+    const r = render(theta).map((v, i) => v - y[i]);
+    cost = 0.5 * r.reduce((s, v) => s + v * v, 0);
+    const J = finiteJacobian(render, theta);
+    const m = r.length;
+    // A = J^T J + lambda I, g = J^T r
+    const A: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
+    const g = new Array(n).fill(0);
+    for (let i = 0; i < m; i++) {
+      for (let a = 0; a < n; a++) {
+        g[a] += J[i][a] * r[i];
+        for (let b = 0; b < n; b++) A[a][b] += J[i][a] * J[i][b];
+      }
+    }
+    for (let a = 0; a < n; a++) A[a][a] += lambda;
+    const step = solveDense(A, g);
+    const norm = Math.sqrt(step.reduce((s, v) => s + v * v, 0));
+    theta = theta.map((v, i) => v - step[i]);
+    done = it + 1;
+    if (norm < tol) break;
+  }
+  return { theta, iters: done, finalCost: cost };
+}
