@@ -141,11 +141,13 @@ $$t_{k+1}=t_k+\frac{f(\mathbf o+t_k\mathbf d)}{L},\qquad \text{hit when } f<\var
 
 $$s=\operatorname{clamp}\Big(\min_i\tfrac{k\,f(\mathbf p+t_i\mathbf l)}{t_i},0,1\Big),\qquad \text{AO}=\operatorname{clamp}\Big(1-k\sum_i2^{-i}\big(h_i-f(\mathbf p+h_i\mathbf n)\big),0,1\Big)$$
 
-**Shading** ○: Lambert $\rho/\pi$, and GGX:
+**Shading** ✔ (oracle_ggx.py, all pass): Lambert $\rho/\pi$, and GGX:
 
 $$f_r=\frac\rho\pi+\frac{DFG}{4(\mathbf n\cdot\mathbf l)(\mathbf n\cdot\mathbf v)},\quad D=\frac{\alpha^2}{\pi((\mathbf n\cdot\mathbf h)^2(\alpha^2-1)+1)^2}$$
 
-**Environment light** ○: $\ E(\mathbf n)=\sum_{l\le2}\hat A_lL_{lm}Y_{lm}(\mathbf n)$ with $\hat A=(\pi,\tfrac{2\pi}3,\tfrac\pi4)$, and output $\rho E/\pi$.
+Validated: D normalization to 1e-12 (α 0.02–1); Smith masking identity; reciprocity; importance-sampler moments; directional albedo MC == quadrature and ≤ 1. Visibility uses $V=1/((n_l+s_l)(n_v+s_v))$ with $s_x=\sqrt{\alpha^2+(1-\alpha^2)n_x^2}$: finite at grazing, no clamps on $n\!\cdot\! l$ or $n\!\cdot\! v$ (this replaces the earlier clamp advice). Energy note: single-scatter GGX loses heavily at high roughness (directional albedo 0.88 at α=0.3, 0.31 at α=1, normal incidence); cap α or add multiple-scattering compensation.
+
+**Environment light** ✔ (oracle_sh.py, all pass): $\ E(\mathbf n)=\sum_{l\le2}\hat A_lL_{lm}Y_{lm}(\mathbf n)$ with $\hat A=(\pi,\tfrac{2\pi}3,\tfrac\pi4)$ derived from the clamped cosine ($A_l=2\pi\int_0^1 xP_l(x)\,dx$), orthonormal basis, output $\rho E/\pi$. White furnace: $E=\pi$, output $=\rho$. Formula matches brute-force irradiance; shader c1–c5 constants verified against the general form. Policies: clamp $E\ge0$ (sharp lobes undershoot ≈ −3% of peak); do NOT window irradiance (Hann raised median error 4%→25%); SH-9 is for soft sky only (up to 94% relative error on sharp lobes), keep the sun analytic.
 
 **Band-limit** ○: $\ w_k=1-s\big(\operatorname{clamp}(4f_k\Delta x-1,0,1)\big)$, $\ s(x)=3x^2-2x^3$, $\ \Delta x=t\delta$.
 
@@ -201,9 +203,11 @@ Fit the merged coefficient $\rho E$, not $\rho$ and $E$ separately.
 
 **Rotation:** $q=(\cos\tfrac\theta2,\sin\tfrac\theta2\mathbf n)$ and $\mathbf v'=q\mathbf vq^*$ ○. Slerp is $\tfrac{\sin((1-u)\Omega)}{\sin\Omega}q_0+\tfrac{\sin(u\Omega)}{\sin\Omega}q_1$ ○.
 
-**Tracking filter** (error-state, untested) ○:
+**Tracking filter** ✔ (oracle_eskf.py, all pass; world-frame error, no reset):
 
-$$\hat q\leftarrow\hat q\otimes\exp((\omega_m-\hat b)\Delta t),\qquad P\leftarrow FPF^\top+Q,\qquad K=PH^\top(HPH^\top+R_m)^{-1}$$
+$$F=\begin{pmatrix}I&-\Delta t\,\hat R\\0&I\end{pmatrix},\quad H=\begin{pmatrix}\hat R^\top[\mathbf u]_\times&0\end{pmatrix},\quad \hat R\leftarrow\mathrm{Exp}(\delta\theta)\hat R,\quad \hat b\leftarrow\hat b+\delta b$$
+
+The body-frame form as first specified was overconfident (mean NEES 20 vs ≈6); the world-frame form is NEES-consistent at all checkpoints over 200 runs. Do not apply a reset to the world-frame filter (a reset pushes NEES back to 10). All three sign-flipped variants blow up, so the oracle catches sign errors. Observability: gravity cannot observe yaw (static device drifts 17°→44° over 30 s, and the filter knows it, NEES stays in band); motion makes world-z bias observable; yaw needs a magnetometer or camera. Limits: tests use constant bias and no linear acceleration; real motion needs accelerometer gating.
 
 **Contact against the field** ○: penetration when $f(\mathbf c)<r$, with $\mathbf n=\nabla f/\|\nabla f\|$ and contact point $\mathbf c-f(\mathbf c)\mathbf n$.
 
