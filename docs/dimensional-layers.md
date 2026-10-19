@@ -52,8 +52,17 @@ The forward model carries the dimensionality; the inverse machinery is uniform.
   a 2.5D layer with parallax 0 reads as static under camera motion
   (proves the parallax path is live, not decorative).
 
-## Limits (honest)
-- 4D means 3D plus time. Literal fourth spatial dimension is not in scope.
+## Discrete gameplay layers (VR-capable plane play)
+Beyond visual parallax, layers can be gameplay planes: a fixed stack of depth
+planes (three is the classic count) that the player character inhabits and hops
+between. Each plane is a 2.5D layer with its own content and collision; hopping
+is a depth translation of the player, not a camera trick. In VR the planes stop
+being a visual effect and become navigable space: the player moves through real
+depth between planes while the headset tracks true head position. Craft-style
+material looks (cardboard, felt, sponge) for layer content ride on the v1.6.0
+TEV material system as fixed combiner chains.
+
+## Limits (honest)- 4D means 3D plus time. Literal fourth spatial dimension is not in scope.
 - Mixed-march performance is unmeasured until built.
 - Per-object mixed aesthetics (flat vs full shading) ride on the v1.6.0 TEV
   material system; the layering API does not reimplement materials.
