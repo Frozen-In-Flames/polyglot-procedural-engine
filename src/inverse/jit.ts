@@ -561,6 +561,10 @@ export function nisChange(
  * Ainf = J^T J / s2 + P^{-1}.  z = (NIS - m) / sqrt(2m); flag when z > 6.
  * Since v1.8.1 the residuals are trimmed by default (see nisChange);
  * pass trimK = 0 for the legacy untrimmed computation.
+ *
+ * NOTE (v1.9.1): superseded as the JIT detection step by detectChange
+ * (src/inverse/changedetect.ts), which shares the estimator's robust
+ * weights. nisChange/nisStatistic stay for back-compat and baselines.
  */
 export function nisStatistic(
   y: Vec,
@@ -573,6 +577,19 @@ export function nisStatistic(
 ): number {
   return nisChange(y, thetaPred, P, Rfun, Jfun, sigma2, trimK).nis;
 }
+
+// ---------------------------------------------------------------------------
+// Outlier-aware change detection (v1.9.1): the JIT detection step.
+// Re-exported from src/inverse/changedetect.ts; see docs/change-detection.md.
+// ---------------------------------------------------------------------------
+export {
+  detectChange,
+  scoreDetect,
+  waldDetect,
+  chi2isf99,
+  DEFAULT_FORM,
+} from './changedetect.js';
+export type { DetectForm, DetectOpts, DetectResult } from './changedetect.js';
 
 // ---------------------------------------------------------------------------
 // Spherical harmonics (9 coefficients, orthonormal basis).

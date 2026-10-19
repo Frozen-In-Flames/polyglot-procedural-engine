@@ -190,6 +190,22 @@ Fit the merged coefficient $\rho E$, not $\rho$ and $E$ separately.
 
 **Texture loss** ○: log power spectrum plus the sorted-pixel Wasserstein term.
 
+**Change detection** ✔ (test/change-detect.test.ts, 4/4; full tables in
+docs/change-detection.md): the detector shares the estimator's robust
+weights. Three forms: score-GM ($g=J^\top\psi(u)$, $T=g^\top M^{-1}g$,
+$M=\sum\psi^2JJ^\top$, GM $\psi$), score-Huber (same statistic, monotone
+$\psi=\mathrm{clamp}(u,-k,k)$ for detection only), Wald at the robust
+solution ($T=\Delta\theta^\top V^{-1}\Delta\theta$,
+$V=H^{-1}MH^{-1}$ sandwich). Default: Wald, the only form with nominal
+false alarms under every dirt condition (0% clean/clutter/specular/
+spec+clutter at the 99% threshold; score-GM false-alarms 100% on specular,
+score-Huber 72.5% on clutter). Power 100% at 0.3+ rad jumps for all forms;
+Wald blind below ~0.15 rad (warm-start tracking covers small jumps).
+Breakdown sweep to 2.0 rad: no form breaks on this toy. End-to-end
+track-loss 0.0% vs 100% false alarms for legacy trimmed-NIS on the same
+frames. Note: the sandwich meat must be $\psi^2$, not $\psi$ (a missing
+square makes $M$ indefinite; caught by the suite).
+
 ---
 
 ## 4. Interface and size
