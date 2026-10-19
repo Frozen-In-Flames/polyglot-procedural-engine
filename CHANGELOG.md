@@ -3,6 +3,21 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [1.8.0] - Dimensional layering: 2D, 2.5D, 3D, 4D in one field of view (2026-10-19)
+
+New module src/scene/layers.ts: every scene element declares a dimensionality
+and all composite through one raymarch loop. layer2D (billboard flat fields),
+layer25D (plane layers with parallax as exact arithmetic, pinned to 1e-12),
+solid3D (existing SDF path, unchanged), field4D (time-varying fields; 4D means
+3D plus time). Discrete gameplay layers: a PlaneStack of depth planes the
+player inhabits and hops between as pure depth translation. Inverse solvers
+stay uniform across dimensions (a sprite tint and a light azimuth are both just
+parameters). 492/492 suite green (476 prior + 16 new, tests first).
+Honest limits: 4D ghosting bound holds only under the v1.3.0 steady-state
+measurement; the layer fitter is not yet wired to the robust costs;
+PlaneStack has no character-controller coupling yet; mixed-march performance
+unmeasured.
+
 ## [1.7.0] - Robust estimation upgrades (2026-10-19)
 
 Owner validation tracks (docs/oracles/conditional_qr_oracle.py,
