@@ -3,6 +3,102 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [2.0.0] - Dev flexibility: building games with just math (2026-10-20)
+
+Seven opt-in features; no default changes. 538/538 suite green (518 prior +
+20 new, tests first). Full guide: docs/dev-flexibility.md.
+
+**1. Grid worlds as a scene type** (new src/scene/grid.ts; `kind: 'grid'`
+layer in src/scene/layers.ts). What: a level as a cell map (width x depth
+cells, cell size, origin, wall height; solid cells are full-height wall
+columns), composited by marchScene in one FOV with SDF layers, nearest hit
+wins. Why: the smallest world representation that still plays, defined as
+data instead of meshes, with the whole layer system on top. How:
+`makeGrid` / `gridSet` to author, `generateGrid(seed, ...)` to generate, a
+`GridLayer { kind: 'grid', grid, color(cellX, cellZ, side, p) }` to render;
+`raycastGrid` is public for dev-side queries. Raycasts run an exact DDA in
+the ground plane: axis hit pinned at exactly 5, 45-degree diagonal entry at
+exactly 1.5 * sqrt(2); grid + sphere composite pins the nearer surface both
+ways.
+
+**2. March policy as a choice** (`MarchOpts.policy` in src/scene/layers.ts).
+What: `'sphere'` (default, existing adaptive sphere tracing) or `'fixed'`
+(fixed-step marching at `MarchOpts.fixedStep`) for SDF layers; analytic
+layers are exact under either. Why: fixed-step has flat predictable cost and
+a deliberate retro quantization for grid-flavored games and weak hardware,
+with the error published instead of hidden. How: pass
+`{ policy: 'fixed', fixedStep: 0.3, steps: 2000 }` to marchScene or set the
+FrameMarcher dial. Measured budget (unit sphere at distance 5, 16-ray fan):
+fixed step 0.1 max error 0.0984, inside the guaranteed one-step bound;
+step 0.3 on the axis ray errs exactly 0.2; sphere tracing max error 0.00214
+on the same fan. Honest limit: fixed-step tunnels through features thinner
+than the step.
+
+**3. Resolution as runtime dials** (new src/render/frame.ts, `FrameMarcher`).
+What: a scanline column renderer owning a live params object: columns,
+steps, maxDist, eps, fovY, policy, fixedStep. Mutate a dial, render again,
+no rebuild. Why: one game scales across hardware by turning dials, and
+quality becomes a runtime decision a dev (or player) can make live. How:
+`new FrameMarcher({ columns: 90 })`, `marcher.render(cam, layers)`, then
+`marcher.params.columns = 45` and render again. Defaults
+(`DEFAULT_FRAME_PARAMS`) reproduce direct marchScene results bit-identically
+column for column (pinned); columns and steps dial changes move the counts
+exactly as specified (pinned via telemetry on a constant field).
+
+**4. March telemetry API** (new src/render/telemetry.ts; `MarchOpts.stats`
+counter in layers). What: per-ray steps, hit distance, and cost (field
+evaluations) plus a frame aggregate that is exactly the sum of the per-ray
+values. Cost convention: 1 per field eval, +6 for an SDF normal on a hit,
+1 for an analytic layer. Why: performance becomes measured instead of
+folklore; devs build debug views and auto-quality from the same numbers,
+and the XR cost model gets measured inputs. How: read `frame.telemetry`
+from any FrameMarcher render, or pass `{ stats }` in MarchOpts to any
+marchScene call. Ground truth pinned: one column vs a unit sphere at
+distance 5 gives steps 2, distance exactly 4, cost 8; a 90-column frame on
+that scene measures 1068 evals, 32 hits.
+
+**5. Seed-regenerable levels** (src/scene/grid.ts). What:
+`generateGrid(seed, width, depth, { density, border })` builds a world from
+a seed via the canonical Pcg32; `GridLevel.regenerate(newSeed)` replaces
+the world completely. Why: a level becomes a shareable number; same seed
+is bit-identical on every run and port, so daily-seed and endless modes
+are trivial and a mid-game reset carries nothing over. How:
+`new GridLevel(7, 16, 16, { density: 0.3, border: true })`, then
+`level.regenerate(99)`. Pinned: same seed deep-equals, different seeds
+differ, border ring always walled, regeneration equals a fresh generate of
+the new seed exactly.
+
+**6. Hookable render stages** (`FrameHooks` in src/render/frame.ts). What:
+the render is dataflow (samples, hits, columns) and two hooks expose the
+seams: `hitTest(ctx)` may return a LayerHit to override a ray's hit or
+undefined to decline; `shadeColumn(ctx)` maps a finished column to its
+final color. Both receive full context (index, nx, ray, the engine's own
+hit, telemetry). Why: devs insert their own math (custom hit rules,
+per-column fog/tinting, stylized shading) without forking the engine. How:
+pass hooks as the third argument to `marcher.render(cam, layers, hooks)`.
+Pinned: a doubling shade hook doubles colors exactly, a forced hit lands
+at exactly its depth, declining or absent hooks leave output identical to
+plain rendering.
+
+**7. Write-once dev math blocks** (new src/dev/math.ts, exported from the
+package root as the `dev` namespace). What: eleven pure closed-form
+functions for game logic: clamp, clamp01, lerp, remap, smoothstep,
+pingpong, invFalloff, pulse, hash01, cellIndex, inBounds. Why: the
+polyglot promise extends to games built on the engine; blocks are exact
+arithmetic or ride canonical exact paths (pulse on the polynomial sine,
+hash01 on the PCG hash, smoothstep on the quintic fade), so a dev formula
+behaves identically in every port. How: `import { dev } from
+'.../src/index.js'` and compose, e.g. `dev.hash01(dev.cellIndex(x, z, w))`
+for per-cell deterministic variety. Pinned: reference values
+(smoothstep(0, 1, 0.25) = 0.103515625 exactly; hash01(42) =
+0.28497612476348877) and a bit-identical determinism sweep over every
+function.
+
+Honest limits: the frame marcher renders one horizontal scanline (ny = 0),
+not a full framebuffer (the WebGL raymarcher remains the full-frame
+renderer); grid walls are one height per world (no per-cell heights yet);
+telemetry cost counts field evaluations, not wall-clock time.
+
 ## [1.8.1] - Robust-estimation follow-up: GM tightness, NIS under outliers (2026-10-19)
 
 Owner follow-up oracle (docs/oracles/test_robust_followup.py) ported to TS;
