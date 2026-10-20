@@ -21,8 +21,9 @@ import type { Vec2, Vec3 } from '../math/vec.js';
 import type { CharacterState } from '../game/character.js';
 import { finiteJacobian } from '../inverse/conditioning.js';
 import { irlsGnFit } from '../inverse/robust.js';
+import { raycastGrid, type GridWorld } from './grid.js';
 
-export type DimKind = '2d' | '2.5d' | '3d' | '4d';
+export type DimKind = '2d' | '2.5d' | '3d' | '4d' | 'grid';
 
 export interface Ray {
   origin: Vec3;
@@ -78,12 +79,44 @@ export interface Field4D {
   time: number; // current frame time
 }
 
-export type Layer = Layer2D | Layer25D | Solid3D | Field4D;
+export interface GridLayer {
+  kind: 'grid';
+  /** The cell-map world (src/scene/grid.ts). Walls are full-height
+   *  columns over solid cells; raycast exactly by DDA. */
+  grid: GridWorld;
+  /** Color per wall hit: cell coordinates, the face crossed, hit point. */
+  color: (cellX: number, cellZ: number, side: 'x' | 'z', p: Vec3) => Vec3;
+}
+
+export type Layer = Layer2D | Layer25D | Solid3D | Field4D | GridLayer;
+
+/** March policy for SDF layers.
+ *  'sphere': adaptive sphere tracing, t_{k+1} = t_k + f(o + t_k d) (default).
+ *  'fixed': fixed-step marching, samples at multiples of fixedStep; the
+ *  first sample inside the surface wins. Distance error is bounded by one
+ *  step (measured and pinned: see docs/dev-flexibility.md), and features
+ *  thinner than the step can be tunneled through. Analytic layers (2d,
+ *  2.5d, grid) are exact under either policy. */
+export type MarchPolicy = 'sphere' | 'fixed';
+
+/** Opt-in march instrumentation: when supplied, the march counts its work
+ *  here. steps = march iterations; evals = field/content evaluations
+ *  (analytic layers count 1). This is the raw material of the telemetry
+ *  API (src/render/telemetry.ts) and the XR cost model. */
+export interface MarchStats {
+  steps: number;
+  evals: number;
+}
 
 export interface MarchOpts {
   steps?: number;
   maxDist?: number;
   eps?: number;
+  policy?: MarchPolicy;
+  /** Fixed-policy sample spacing in world units. Default 0.1. */
+  fixedStep?: number;
+  /** Opt-in work counter; undefined (default) changes nothing. */
+  stats?: MarchStats;
 }
 
 export const MARCH_STEPS = 128;
@@ -197,7 +230,13 @@ function intersectLayer25D(layer: Layer25D, ray: Ray, camPos: Vec3, index: numbe
   return { depth: t, color: c.color, kind: '2.5d', layer: index };
 }
 
-/** Standard sphere tracing: t_{k+1} = t_k + f(o + t_k d). */
+/**
+ * March a field under the selected policy.
+ * 'sphere' (default): t_{k+1} = t_k + f(o + t_k d), adaptive.
+ * 'fixed': samples at t = k * fixedStep; the first sample with f < eps is
+ * the hit. Error vs the true surface is at most one step along the ray
+ * (plus the eps band); features thinner than the step can be missed.
+ */
 function sphereTrace(
   field: (p: Vec3) => number,
   ray: Ray,
@@ -206,8 +245,22 @@ function sphereTrace(
   const steps = opts.steps ?? MARCH_STEPS;
   const eps = opts.eps ?? MARCH_EPS;
   const maxDist = opts.maxDist ?? MARCH_MAX_DIST;
+  const stats = opts.stats;
+  if ((opts.policy ?? 'sphere') === 'fixed') {
+    const step = opts.fixedStep ?? 0.1;
+    let t = 0;
+    for (let i = 0; i < steps; i++) {
+      if (stats) stats.steps++;
+      const f = field(at(ray, t));
+      if (f < eps) return t;
+      t += step;
+      if (t > maxDist) return Infinity;
+    }
+    return Infinity;
+  }
   let t = 0;
   for (let i = 0; i < steps; i++) {
+    if (stats) stats.steps++;
     const p = at(ray, t);
     const f = field(p);
     if (f < eps) return t;
@@ -226,20 +279,45 @@ function centralNormal(field: (p: Vec3) => number, p: Vec3): Vec3 {
 }
 
 function intersectSolid3D(layer: Solid3D, ray: Ray, index: number, opts: MarchOpts): LayerHit {
-  const t = sphereTrace(layer.sdf, ray, opts);
+  const stats = opts.stats;
+  const field = stats
+    ? (p: Vec3) => {
+        stats.evals++;
+        return layer.sdf(p);
+      }
+    : layer.sdf;
+  const t = sphereTrace(field, ray, opts);
   if (!isFinite(t)) return MISS;
   const p = at(ray, t);
-  const n = centralNormal(layer.sdf, p);
+  const n = centralNormal(field, p);
   return { depth: t, color: layer.shade(p, n), kind: '3d', layer: index };
 }
 
 function intersectField4D(layer: Field4D, ray: Ray, index: number, opts: MarchOpts): LayerHit {
-  const field = (p: Vec3) => layer.field(p, layer.time);
+  const stats = opts.stats;
+  const raw = (p: Vec3) => layer.field(p, layer.time);
+  const field = stats
+    ? (p: Vec3) => {
+        stats.evals++;
+        return raw(p);
+      }
+    : raw;
   const t = sphereTrace(field, ray, opts);
   if (!isFinite(t)) return MISS;
   const p = at(ray, t);
   const n = centralNormal(field, p);
   return { depth: t, color: layer.shade(p, layer.time, n), kind: '4d', layer: index };
+}
+
+function intersectGridLayer(layer: GridLayer, ray: Ray, index: number, opts: MarchOpts): LayerHit {
+  const hit = raycastGrid(layer.grid, ray.origin, ray.dir, opts.maxDist ?? MARCH_MAX_DIST);
+  if (!hit) return MISS;
+  return {
+    depth: hit.depth,
+    color: layer.color(hit.cellX, hit.cellZ, hit.side, hit.point),
+    kind: 'grid',
+    layer: index,
+  };
 }
 
 /** One evaluation pass over every layer; the nearest hit wins. */
@@ -251,10 +329,17 @@ export function intersectLayer(
   opts: MarchOpts = {},
 ): LayerHit {
   switch (layer.kind) {
-    case '2d': return intersectLayer2D(layer, ray, camPos, index);
-    case '2.5d': return intersectLayer25D(layer, ray, camPos, index);
+    case '2d':
+      if (opts.stats) opts.stats.evals++;
+      return intersectLayer2D(layer, ray, camPos, index);
+    case '2.5d':
+      if (opts.stats) opts.stats.evals++;
+      return intersectLayer25D(layer, ray, camPos, index);
     case '3d': return intersectSolid3D(layer, ray, index, opts);
     case '4d': return intersectField4D(layer, ray, index, opts);
+    case 'grid':
+      if (opts.stats) opts.stats.evals++;
+      return intersectGridLayer(layer, ray, index, opts);
   }
 }
 
