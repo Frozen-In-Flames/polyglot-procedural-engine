@@ -20,7 +20,7 @@
 import type { Vec2, Vec3 } from '../math/vec.js';
 import type { CharacterState } from '../game/character.js';
 import { finiteJacobian } from '../inverse/conditioning.js';
-import { irlsGnFit, fitGncGm } from '../inverse/robust.js';
+import { irlsGnFit } from '../inverse/robust.js';
 
 export type DimKind = '2d' | '2.5d' | '3d' | '4d';
 
@@ -368,8 +368,6 @@ export interface FitOpts {
   gmC?: number;
   /** Noise floor for the MAD robust scale (default 1e-6). */
   sigmaFloor?: number;
-  /** Graduated non-convexity: anneal c from 50 (default false). */
-  gnc?: boolean;
 }
 
 export interface FitResult {
@@ -395,6 +393,11 @@ export interface FitResult {
  * 1/2 ||render(theta) - y||^2, for baselines and exact reproducibility.
  * finalCost is always the plain 1/2 ||r||^2 at the solution, so robust
  * and plain fits compare on the same scale.
+ *
+ * v1.9.2: the gnc option (graduated non-convexity) and the hybrid
+ * Huber-then-GM path were removed, falsified by the owner's write-up
+ * (40-43% fail on the hard case vs 7% for warm-start direct GM). An
+ * unknown robust kind now throws instead of falling back silently.
  */
 export function fitLayerParams(
   render: (theta: number[]) => number[],
@@ -403,6 +406,12 @@ export function fitLayerParams(
   opts: FitOpts = {},
 ): FitResult {
   const kind = opts.robust ?? 'gm';
+  // v1.9.2: an unknown robust kind is a rejection, not a fallback.
+  // (The falsified gm-gnc / huber>gm hybrid paths were removed outright;
+  // silently treating them as GM would hide a stale caller.)
+  if (kind !== 'gm' && kind !== 'huber' && kind !== 'l2') {
+    throw new Error(`fitLayerParams: unknown robust kind '${kind}'`);
+  }
   if (kind === 'l2') return fitPlainDampedGN(render, theta0, y, opts);
   const jac = (th: number[]): number[][] => finiteJacobian(render, th);
   const irlsOpts = {
@@ -412,9 +421,7 @@ export function fitLayerParams(
     tol: opts.tol ?? 1e-5,
     sigmaFloor: opts.sigmaFloor ?? 1e-6,
   };
-  const r = opts.gnc
-    ? fitGncGm(y, theta0, render, jac, irlsOpts)
-    : irlsGnFit(y, theta0, render, jac, irlsOpts);
+  const r = irlsGnFit(y, theta0, render, jac, irlsOpts);
   const yh = render(r.theta);
   let cost = 0;
   for (let i = 0; i < y.length; i++) cost += 0.5 * (yh[i] - y[i]) ** 2;

@@ -13,9 +13,8 @@ import {
   robustCost,
   madScale,
   irlsGnFit,
-  fitGncGm,
-  fitHuberThenGm,
 } from '../src/inverse/robust.js';
+import * as robustModule from '../src/inverse/robust.js';
 import {
   EPS_F64,
   QR_TAU,
@@ -23,8 +22,11 @@ import {
   qrTrigger,
   solveNE,
   solveQR,
+  solveQRStacked,
   solveCondQR,
 } from '../src/inverse/qrcond.js';
+import { fitLayerParams } from '../src/scene/layers.js';
+import type { FitOpts } from '../src/scene/layers.js';
 import {
   mulberry32,
   randn,
@@ -413,8 +415,15 @@ test('qr: float32 emulation, QR beats NE on the ill-conditioned cap, ties on hem
 // F. Robust-cost head-to-head on the JIT toy (ports
 // docs/oracles/robust_cost_head2head.py). Outlier sources the Lambertian
 // model cannot explain: specular (Blinn-Phong lobe, clipped at 1.0) and
-// clutter (flat occluder rectangle). Estimators: l2, huber, gm, gm-gnc,
-// huber>gm, plus the third arm spec6 (model the outlier with GGX).
+// clutter (flat occluder rectangle). Estimators: l2, huber, gm, plus the
+// third arm spec6 (model the outlier with GGX).
+//
+// v1.9.2 DELIBERATE DIVERGENCE from the oracle: the oracle also runs
+// gm-gnc and huber>gm, but the owner's write-up (150 trials/cell, near
+// starts) falsified them: 40-43% fail on the hard case vs 7% for warm-start
+// direct GM, and 47-61 iterations vs 7-20. A falsified path is removed,
+// not compared: fitGncGm and fitHuberThenGm no longer exist, and the
+// fitLayerParams gnc option is gone.
 // ---------------------------------------------------------------------------
 
 const VIEW3 = [0, 0, 1];
@@ -463,7 +472,7 @@ function makeImage(
   return y.map((v) => Math.min(1, Math.max(0, v)));
 }
 
-type Method = 'l2' | 'huber' | 'gm' | 'gm-gnc' | 'huber>gm' | 'spec6';
+type Method = 'l2' | 'huber' | 'gm' | 'spec6';
 
 function clamp4(th: number[]): void {
   th[2] = Math.max(th[2], 0.05);
@@ -493,8 +502,6 @@ function fitMethod(
   const render = (th: number[]) => renderLambertN(th, normals, RHO);
   const jac = (th: number[]) => jacLambertN(th, normals, RHO);
   const base = { clamp: clamp4, sigmaFloor: SIG, maxIt: 40, tol: 1e-5 };
-  if (method === 'gm-gnc') return fitGncGm(y, th0, render, jac, base);
-  if (method === 'huber>gm') return fitHuberThenGm(y, th0, render, jac, base);
   return irlsGnFit(y, th0, render, jac, { ...base, kind: method });
 }
 
@@ -518,7 +525,7 @@ function headToHead(trials: number, useSpec6: boolean): Map<string, Map<Method, 
     { name: 'near', spread: [0.05, 0.05, 0.1, 0.03] },
     { name: 'far', spread: [0.5, 0.3, 0.4, 0.1] },
   ];
-  const methods4: Method[] = ['l2', 'huber', 'gm', 'gm-gnc', 'huber>gm'];
+  const methods4: Method[] = ['l2', 'huber', 'gm'];
   const out = new Map<string, Map<Method, Cell>>();
   for (const c of conds) {
     for (const s of starts) {
@@ -610,6 +617,14 @@ test('robust: head-to-head full table (oracle structure, 24 trials)', () => {
   const l2f = hard.get('l2')!.failPct;
   assert.ok(hard.get('huber')!.failPct <= l2f, 'huber should not lose to l2 on the hardest case');
   assert.ok(hard.get('gm')!.failPct <= l2f, 'gm should not lose to l2 on the hardest case');
+  // v1.9.2 pin (owner's write-up, near starts, 150 trials/cell: gm 7%
+  // fail vs huber 56% on the hard case): direct GM does not lose to Huber
+  // on the hardest condition from near starts either.
+  const hardNear = res.get('specular 1.0 + clutter 25% / near')!;
+  assert.ok(
+    hardNear.get('gm')!.failPct <= hardNear.get('huber')!.failPct,
+    `hard/near: gm fail% ${hardNear.get('gm')!.failPct} vs huber ${hardNear.get('huber')!.failPct}`,
+  );
   // Third arm: modeling the specular lobe shrinks the azimuth bias floor
   // versus muting it. Paired on the same trials via the shared table.
   for (const key of ['specular 0.6 / near', 'specular 0.6 / far', 'specular 1.0 + clutter 25% / near', 'specular 1.0 + clutter 25% / far']) {
@@ -701,4 +716,159 @@ test('robust: third arm detects the lobe and keeps parameters sane', () => {
   assert.ok(medKs > 0.02, `lobe not detected: median ks ${medKs.toFixed(4)}`);
   assert.ok(medAl >= 0.05 && medAl <= 1, `alpha out of sane range: ${medAl}`);
   assert.ok(isFinite(medK) && medK < 1e14, `6-param Jacobian near-singular: ${medK.toExponential(1)}`);
+});
+
+// ---------------------------------------------------------------------------
+// I. v1.9.2 deltas (owner's robust-costs/QR write-up):
+//    1. GNC and Huber-init are removed, not deprecated: an API that offers
+//       a falsified path is a bug (owner's data: gm-gnc and huber>gm fail
+//       40-43% on the hard case vs 7% for direct GM; GNC takes 47-61
+//       iterations vs 7-20).
+//    2. The robust scale spec is explicit: s = max(sigma, 1.4826 * MAD(r)),
+//       sigma the caller-supplied noise scale (IrlsOpts.sigmaFloor),
+//       shared by Huber and GM alike; Huber's 1.345 kink lives in the
+//       normalized coordinate u = r / s.
+//    3. The QR branch, when the trigger fires, solves via QR on the
+//       stacked ridge system [J; sqrt(lambda) I] centered on a prior
+//       instead of QR on J alone (oracle section 5: on the 15deg cap the
+//       centered ridge cut the error to 0.10 vs 6.8 plain LS).
+// ---------------------------------------------------------------------------
+
+test('v1.9.2: API surface rejects the falsified hybrid paths', () => {
+  const mod = robustModule as unknown as Record<string, unknown>;
+  assert.equal(mod.fitGncGm, undefined, 'fitGncGm must not exist');
+  assert.equal(mod.fitHuberThenGm, undefined, 'fitHuberThenGm must not exist');
+  // fitLayerParams: an unknown robust kind is a rejection, not a fallback.
+  const render = (th: number[]) => [2 * th[0]];
+  assert.throws(
+    () => fitLayerParams(render, [0], [4], { robust: 'gm-gnc' as unknown as 'gm' }),
+    /unknown robust kind/,
+  );
+  assert.throws(
+    () => fitLayerParams(render, [0], [4], { robust: 'huber>gm' as unknown as 'gm' }),
+    /unknown robust kind/,
+  );
+  // The removed gnc flag, passed by an old caller through a cast, must do
+  // nothing: identical result to the plain default call.
+  const plain = fitLayerParams(render, [0], [4], { robust: 'gm' });
+  const withGnc = fitLayerParams(
+    render,
+    [0],
+    [4],
+    { robust: 'gm', gnc: true } as unknown as FitOpts,
+  );
+  assert.deepEqual(withGnc.theta, plain.theta);
+  assert.equal(withGnc.iters, plain.iters);
+});
+
+test('v1.9.2: scale spec s = max(sigma, 1.4826 * MAD) pins both ways', () => {
+  // MAD < sigma: s = sigma (the caller-supplied noise scale wins).
+  assert.equal(madScale([1, 1, 1, 1], 0.01), 0.01);
+  assert.equal(madScale([0.001, -0.002, 0.0015], 0.5), 0.5);
+  // MAD > sigma: s = 1.4826 * MAD.
+  const s = madScale([1, 2, 3, 4, 100], 0.001); // med 3, MAD 1
+  assert.ok(Math.abs(s - 1.4826) < 1e-12, `s=${s}`);
+  const s2 = madScale([0.5, -0.5, 0.5, -0.5], 0.01); // med 0, MAD 0.5
+  assert.ok(Math.abs(s2 - 1.4826 * 0.5) < 1e-12, `s2=${s2}`);
+});
+
+test('v1.9.2: Huber scale is explicit, sigma >> MAD reduces Huber to l2', () => {
+  // With the caller-supplied sigma far above the residual MAD, s = sigma
+  // and every normalized residual u = r/s sits inside the Huber kink, so
+  // all weights are 1 and the Huber fit coincides with the l2 fit. This is
+  // the visible consequence of Huber's scale handling: Huber normalizes by
+  // the same s = max(sigma, 1.4826 * MAD) as GM.
+  const px = sphereGrid(64);
+  const normals = px.normals;
+  const thTrue = [0.6, 0.5, 1.0, 0.15];
+  const y = makeImage(thTrue, normals, 0, 0, 1234);
+  const th0 = thTrue.map((v) => v + 0.01);
+  const render = (th: number[]) => renderLambertN(th, normals, RHO);
+  const jac = (th: number[]) => jacLambertN(th, normals, RHO);
+  const rl2 = irlsGnFit(y, th0, render, jac, { kind: 'l2', sigmaFloor: SIG, clamp: clamp4 });
+  const rh = irlsGnFit(y, th0, render, jac, { kind: 'huber', sigmaFloor: 10, clamp: clamp4 });
+  const e = relErr(rh.theta, rl2.theta);
+  assert.ok(e < 1e-6, `huber(sigma=10) vs l2 rel err ${e.toExponential(2)}`);
+});
+
+test('v1.9.2: stacked QR equals the explicit normal-equation ridge', () => {
+  // min ||Jx - y||^2 + lambda ||x - c||^2, solved two ways: QR on the
+  // stacked system [J; sqrt(lambda) I] (qrcond) vs the closed-form normal
+  // equations (J^T J + lambda I) x = J^T y + lambda c (solveSPD).
+  const J = makeJ(300, 5, 10, 5150);
+  const uni = makeUniform(6161);
+  const xt = Array.from({ length: 5 }, () => uni() * 2 - 1);
+  const center = Array.from({ length: 5 }, () => uni() * 2 - 1);
+  const lam = 0.7;
+  const y = J.map((row) => dot(row, xt));
+  const xs = solveQRStacked(J, y, lam, center);
+  const JtJ = matTMat(J);
+  const JtY = matTVec(J, y);
+  for (let a = 0; a < 5; a++) {
+    JtJ[a][a] += lam;
+    JtY[a] += lam * center[a];
+  }
+  const xr = solveSPD(JtJ, JtY);
+  const e = relErr(xs, xr);
+  assert.ok(e < 1e-9, `stacked QR vs NE ridge rel err ${e.toExponential(2)}`);
+});
+
+test('v1.9.2: stacked QR with lambda = 0 reduces to plain QR', () => {
+  const J = makeJ(300, 5, 1e6, 7171);
+  const uni = makeUniform(8181);
+  const xt = Array.from({ length: 5 }, () => uni() * 2 - 1);
+  const y = J.map((row) => dot(row, xt));
+  const e = relErr(solveQRStacked(J, y, 0, [0, 0, 0, 0, 0]), solveQR(J, y));
+  assert.ok(e < 1e-12, `lambda=0 stacked vs plain QR rel err ${e.toExponential(2)}`);
+});
+
+test('v1.9.2: stacked QR with centered prior beats plain QR on noisy cap-15', () => {
+  // Ports oracle section 5 through the production QR path: cap 15deg,
+  // noise 0.01, lambda = 1e-4 * ||J||_2^2, prior = truth with 30% error.
+  // The oracle measured median relative error 0.10 centered vs 6.8 plain.
+  const J = phiSH(capNormals(2000, 15, 5));
+  const JtJ = matTMat(J);
+  const lam = 1e-4 * Math.max(...symEigenvalues(JtJ));
+  const g = makeRng(6);
+  const xt = Array.from({ length: 9 }, () => g());
+  const g2 = makeRng(7);
+  const priorC = xt.map((v) => v * (1 + 0.3 * g2()));
+  const trials = 24;
+  const ePlain: number[] = [];
+  const eStack: number[] = [];
+  for (let tr = 0; tr < trials; tr++) {
+    const gn = makeRng(2100 + tr);
+    const y = J.map((row) => dot(row, xt) + 0.01 * gn());
+    ePlain.push(relErr(solveQR(J, y), xt));
+    eStack.push(relErr(solveQRStacked(J, y, lam, priorC), xt));
+  }
+  const mPlain = median(ePlain);
+  const mStack = median(eStack);
+  console.log(
+    `      cap15 stacked-QR: median rel err plain QR ${mPlain.toExponential(2)}, ` +
+      `centered stacked ${mStack.toExponential(2)}`,
+  );
+  assert.ok(mStack < mPlain, `stacked ${mStack} not below plain ${mPlain}`);
+  assert.ok(mStack < 0.5, `stacked median rel err ${mStack} too large`);
+});
+
+test('v1.9.2: conditional solver keeps trigger behavior with stacked path', () => {
+  // Negative controls unchanged: silent on the wide caps (NE path), fires
+  // on the 5deg cap; with the default lambda = 0 the fired stacked solve
+  // is the plain QR answer, exact on noiseless data.
+  const P5 = phiSH(capNormals(2000, 5, 21));
+  const g = makeRng(424242);
+  const xt = Array.from({ length: 9 }, () => g());
+  const y = P5.map((row) => dot(row, xt));
+  const r = solveCondQR(P5, y);
+  assert.equal(r.fired, true);
+  assert.ok(relErr(r.x, xt) < 1e-6, `cond solver error ${relErr(r.x, xt).toExponential(2)}`);
+  // With a ridge request the fired path goes through the stacked system:
+  // with the center at the prior the answer stays sane on noisy data.
+  const gn = makeRng(31337);
+  const yn = P5.map((row) => dot(row, xt) + 0.01 * gn());
+  const lam = 1e-4 * Math.max(...symEigenvalues(matTMat(P5)));
+  const rr = solveCondQR(P5, yn, QR_TAU, { lambda: lam, center: xt.map((v) => v * 1.05) });
+  assert.equal(rr.fired, true);
+  assert.ok(relErr(rr.x, xt) < relErr(solveQR(P5, yn), xt), 'stacked fired path should beat plain QR here');
 });

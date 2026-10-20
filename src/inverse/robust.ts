@@ -1,6 +1,6 @@
 // inverse/robust.ts - solver upgrades: Huber/IRLS, LM gain ratio,
 // sigmoid bounds, Gaussian pyramid, Eikonal regularizer, uncertainty,
-// Geman-McClure IRLS, graduated non-convexity.
+// Geman-McClure IRLS.
 //
 // Huber loss with IRLS weights:
 //   rho_delta(r) = r^2/2 for |r| <= delta, else delta(|r| - delta/2),
@@ -10,6 +10,17 @@
 //   u = r/s the scale-normalized residual. The weight redescends to zero:
 //   gross outliers are nullified, not merely capped (Huber keeps a constant
 //   non-zero influence for large |u|).
+// v1.9.2: warm-start direct GM is the only GM path. GNC annealing and
+// Huber-then-GM were REMOVED (falsified by the owner's write-up, 150
+// trials/cell near starts: 40-43% fail on the hard case vs 7% for direct
+// GM; GNC took 47-61 iterations vs 7-20): an API that offers a falsified
+// path is a bug. Huber stays as the convex baseline.
+// THE robust scale spec (v1.9.2, explicit): every estimator here works in
+// the normalized coordinate u = r / s with
+//   s = max(sigma, 1.4826 * MAD(r)),
+// sigma the caller-supplied noise scale (IrlsOpts.sigmaFloor), re-estimated
+// per iteration from the current residuals. Huber and GM share this exact
+// rule: Huber's 1.345 kink is in normalized units, not raw data units.
 // IRLS Gauss-Newton with per-iteration scale re-estimation:
 //   s = max(sigmaFloor, 1.4826 * MAD(r)), backtracking on the robust cost.
 // Ground truth for the robust head-to-head:
@@ -72,11 +83,21 @@ function medianSorted(v: number[]): number {
   return s.length % 2 ? s[h] : 0.5 * (s[h - 1] + s[h]);
 }
 
-/** Robust scale s = max(sigmaFloor, 1.4826 * MAD(r)) (the oracle's rule). */
-export function madScale(r: number[], sigmaFloor: number): number {
+/**
+ * THE robust scale: s = max(sigma, 1.4826 * MAD(r)).
+ *
+ * sigma is the caller-supplied noise scale (the prior on the measurement
+ * noise; IrlsOpts.sigmaFloor). When the residual MAD is below sigma the
+ * caller wins (never divide by an implausibly tiny scale); when it is
+ * above, the data wins (the scale adapts to the actual spread). Applied
+ * identically to Huber and GM alike: weights and costs always use the
+ * normalized residual u = r/s, so Huber's 1.345 kink and GM's c are in
+ * normalized units, never raw data units.
+ */
+export function madScale(r: number[], sigma: number): number {
   const med = medianSorted(r);
   const mad = medianSorted(r.map((v) => Math.abs(v - med)));
-  return Math.max(sigmaFloor, 1.4826 * mad);
+  return Math.max(sigma, 1.4826 * mad);
 }
 
 export interface IrlsOpts {
@@ -166,51 +187,15 @@ export function irlsGnFit(
 }
 
 /**
- * Graduated non-convexity for GM: anneal c from 50 down to cFinal
- * (x0.7 per stage, <=6 IRLS iterations per stage), then a final polish at
- * cFinal. Mirrors the oracle's gm-gnc exactly, including the final
- * re-run at cFinal.
- */
-export function fitGncGm(
-  y: number[],
-  theta0: number[],
-  render: (th: number[]) => number[],
-  jac: (th: number[]) => number[][],
-  opts: Omit<IrlsOpts, 'kind' | 'c'> & { cFinal?: number },
-): IrlsResult {
-  const cFinal = opts.cFinal ?? 3.0;
-  let th = theta0.slice();
-  let total = 0;
-  let c = 50;
-  for (;;) {
-    const r = irlsGnFit(y, th, render, jac, { ...opts, kind: 'gm', c, maxIt: 6 });
-    th = r.theta;
-    total += r.iters;
-    if (c <= cFinal) break;
-    c = Math.max(cFinal, c * 0.7);
-  }
-  const fin = irlsGnFit(y, th, render, jac, { ...opts, kind: 'gm', c: cFinal });
-  return { theta: fin.theta, iters: total + fin.iters };
-}
-
-/** Sequential: converge Huber, then continue with GM (the oracle's huber>gm). */
-export function fitHuberThenGm(
-  y: number[],
-  theta0: number[],
-  render: (th: number[]) => number[],
-  jac: (th: number[]) => number[][],
-  opts: Omit<IrlsOpts, 'kind'>,
-): IrlsResult {
-  const r1 = irlsGnFit(y, theta0, render, jac, { ...opts, kind: 'huber' });
-  const r2 = irlsGnFit(y, r1.theta, render, jac, { ...opts, kind: 'gm' });
-  return { theta: r2.theta, iters: r1.iters + r2.iters };
-}
-
-/**
  * IRLS line fit y = a x + b under the Huber loss. Returns [a, b].
- * Iterates weighted least squares until the weights settle.
+ *
+ * The scale is explicit (v1.9.2): sigma is the caller-supplied noise
+ * scale; each iteration sets s = max(sigma, 1.4826 * MAD(r)) and weights
+ * w = min(1, 1.345 * s / |r|) (Huber in the normalized coordinate
+ * u = r/s). The fit is scale-equivariant: scaling data and sigma by the
+ * same factor scales the fit identically.
  */
-export function irlsSolve(xs: number[], ys: number[], delta: number): [number, number] {
+export function irlsSolve(xs: number[], ys: number[], sigma: number): [number, number] {
   const n = xs.length;
   let a = 0, b = 0;
   // Ordinary least squares start.
@@ -223,15 +208,20 @@ export function irlsSolve(xs: number[], ys: number[], delta: number): [number, n
     b = (sy - a * sx) / n;
   }
   for (let iter = 0; iter < 50; iter++) {
+    const r = xs.map((x, i) => a * x + b - ys[i]);
+    const s = madScale(r, sigma);
     let sw = 0, swx = 0, swy = 0, swxx = 0, swxy = 0;
     for (let i = 0; i < n; i++) {
-      const w = huberWeight(a * xs[i] + b - ys[i], delta);
+      const w = robustWeight(r[i] / s, 'huber');
       sw += w; swx += w * xs[i]; swy += w * ys[i];
       swxx += w * xs[i] * xs[i]; swxy += w * xs[i] * ys[i];
     }
     const na = (sw * swxy - swx * swy) / (sw * swxx - swx * swx);
     const nb = (swy - na * swx) / sw;
-    if (Math.abs(na - a) < 1e-12 && Math.abs(nb - b) < 1e-12) {
+    const settled =
+      Math.abs(na - a) <= 1e-12 * Math.max(1, Math.abs(na)) &&
+      Math.abs(nb - b) <= 1e-12 * Math.max(1, Math.abs(nb));
+    if (settled) {
       a = na; b = nb;
       break;
     }

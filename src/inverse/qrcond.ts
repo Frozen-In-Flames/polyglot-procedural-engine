@@ -142,16 +142,77 @@ export function solveQR(J: number[][], y: number[]): number[] {
 }
 
 /**
+ * Ridge solve via QR on the stacked system (v1.9.2): minimize
+ *   ||J x - y||^2 + lambda ||x - c||^2
+ * by QR-factorizing A = [J; sqrt(lambda) I] against b = [y - J c; 0] and
+ * shifting back: x = c + z. This is the numerically safe way to apply the
+ * centered ridge prior (normal equations would square the condition
+ * number of an already ill-conditioned J). With lambda = 0 it reduces to
+ * solveQR(J, y). Ground truth: oracle section 5 (cap 15deg, lambda =
+ * 1e-4 ||J||_2^2, centered prior cut the median error to 0.10 vs 6.8
+ * plain LS).
+ */
+export function solveQRStacked(
+  J: number[][],
+  y: number[],
+  lambda: number,
+  center?: number[],
+): number[] {
+  if (!(lambda >= 0)) {
+    throw new Error(`solveQRStacked: lambda must be >= 0, got ${lambda}`);
+  }
+  const p = J[0].length;
+  const c = center ?? new Array(p).fill(0);
+  const sq = Math.sqrt(lambda);
+  const A: number[][] = J.map((row) => row.slice());
+  for (let a = 0; a < p; a++) {
+    const row = new Array(p).fill(0);
+    row[a] = sq;
+    A.push(row);
+  }
+  const b = J.map((row, i) => {
+    let d = y[i];
+    for (let a = 0; a < p; a++) d -= row[a] * c[a];
+    return d;
+  });
+  for (let a = 0; a < p; a++) b.push(0);
+  const z = solveQR(A, b);
+  return z.map((v, a) => v + c[a]);
+}
+
+/** Ridge options for the QR branch of solveCondQR. */
+export interface QrRidgeOpts {
+  /** Ridge weight lambda >= 0 (default 0: the stacked system is J alone). */
+  lambda?: number;
+  /** Ridge center (prior); defaults to the zero vector. */
+  center?: number[];
+}
+
+/**
  * Conditional least squares: the QR branch iff the trigger fires, else the
  * normal equations (falling back to QR if Cholesky fails outright).
+ *
+ * v1.9.2: the fired branch solves via QR on the stacked ridge system
+ * [J; sqrt(lambda) I] (see solveQRStacked) instead of QR on J alone. With
+ * the default lambda = 0 the stacked solve is mathematically the plain QR
+ * solve, so prior behavior is unchanged; a caller with a prior passes
+ * lambda and center to get the centered-ridge answer the numerically safe
+ * way on exactly the frames where conditioning is bad.
  */
 export function solveCondQR(
   J: number[][],
   y: number[],
   tau = QR_TAU,
+  ridge?: QrRidgeOpts,
 ): { x: number[]; fired: boolean; kappaJtJ: number } {
   const { fire, kappaJtJ } = qrTrigger(J, tau);
-  if (fire) return { x: solveQR(J, y), fired: true, kappaJtJ };
+  if (fire) {
+    return {
+      x: solveQRStacked(J, y, ridge?.lambda ?? 0, ridge?.center),
+      fired: true,
+      kappaJtJ,
+    };
+  }
   const xne = solveNE(J, y);
   if (xne !== null) return { x: xne, fired: false, kappaJtJ };
   return { x: solveQR(J, y), fired: true, kappaJtJ };

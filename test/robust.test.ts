@@ -16,6 +16,9 @@ test('robust: Huber IRLS weights downweight outliers', () => {
 test('robust: IRLS recovers a line fit despite outliers', () => {
   // y = 2x + 1 with two gross outliers; Huber should nearly ignore them.
   // (OLS on this data gives a ~ -2.8; IRLS must do far better.)
+  // sigma is the caller-supplied noise scale: internally the scale is
+  // s = max(sigma, 1.4826 * MAD(r)) per iteration and the Huber kink
+  // 1.345 lives in the normalized coordinate u = r/s (v1.9.2 scale spec).
   const xs: number[] = [];
   const ys: number[] = [];
   for (let x = 0; x < 20; x++) {
@@ -26,7 +29,31 @@ test('robust: IRLS recovers a line fit despite outliers', () => {
   ys[15] -= 50; // outlier
   const [a, b] = irlsSolve(xs, ys, 1.0);
   assert.ok(Math.abs(a - 2) < 0.05, `a=${a}`);
-  assert.ok(Math.abs(b - 1) < 0.2, `b=${b}`);
+  // Pin the true rate, not the hoped-for one (v1.9.2): measured b = 1.207.
+  // Huber has bounded, not zero, influence: at the fixed point s = sigma
+  // = 1, so the two ±50 outliers carry weight 1.345/50 = 0.027 each and
+  // leave a bounded pull on the intercept (the old raw-delta=1 form gave
+  // weight 1/50 and b ~ 1.15; the normalized kink 1.345 is honest either
+  // way). Either is far from the OLS catastrophe (a ~ -2.8).
+  assert.ok(Math.abs(b - 1) < 0.25, `b=${b}`);
+});
+
+test('robust: irlsSolve is scale-equivariant (scale handling is explicit)', () => {
+  // The scale spec makes Huber normalization scale-free: scaling the data
+  // AND the caller-supplied sigma by K must scale the fit by K, because
+  // u = r/s is unchanged. An absolute-delta Huber could not do this.
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (let x = 0; x < 20; x++) {
+    xs.push(x);
+    ys.push(2 * x + 1);
+  }
+  ys[5] += 50;
+  ys[15] -= 50;
+  const [a1, b1] = irlsSolve(xs, ys, 1.0);
+  const [a2, b2] = irlsSolve(xs, ys.map((v) => 100 * v), 100.0);
+  assert.ok(Math.abs(a2 / 100 - a1) / Math.max(1e-9, Math.abs(a1)) < 1e-9, `a ${a1} vs ${a2}`);
+  assert.ok(Math.abs(b2 / 100 - b1) / Math.max(1e-9, Math.abs(b1)) < 1e-9, `b ${b1} vs ${b2}`);
 });
 
 test('robust: LM gain-ratio accepts improving steps, rejects worsening ones', () => {

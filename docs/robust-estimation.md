@@ -17,30 +17,46 @@ with measured head-to-heads instead of doctrine.
 
 All estimators are IRLS Gauss-Newton with per-iteration scale re-estimation
 (s = max(sigma, 1.4826 * MAD(r))) and backtracking on the robust cost, exactly
-per the oracle. Huber (convex) was already in the engine since v1.2.0; new are
-Geman-McClure (redescending, w = (c^2/(c^2+u^2))^2, non-convex), GNC-annealed
-GM (c: 50 -> 3), and huber-then-GM sequential.
+per the oracle. Huber (convex) was already in the engine since v1.2.0; new
+are Geman-McClure (redescending, w = (c^2/(c^2+u^2))^2, non-convex).
+
+### The robust scale spec (v1.9.2, explicit)
+
+Every estimator here works in the normalized coordinate u = r / s with
+s = max(sigma, 1.4826 * MAD(r)), sigma the caller-supplied noise scale
+(IrlsOpts.sigmaFloor, re-estimated per iteration from the current
+residuals). Huber and GM share the exact rule: Huber's 1.345 kink is in
+normalized units, never raw data units, and GM's c is likewise normalized.
+This answers the owner's v1.2.0 question about Huber's scale handling: it
+is the same spec as GM's, visible in madScale() and in the IRLS loops.
+The 1D Huber line fit (irlsSolve) uses it too and is scale-equivariant:
+scaling data and sigma by the same factor scales the fit identically.
 
 Head-to-head on the JIT toy (Lambertian sphere, unknown az/el/I/A; 24
 trials, near/far starts; failure = |d(az,el)| > 0.15 rad or |dI| > 0.3 or
 |dA| > 0.1):
 
-| condition / start | l2 fail% | huber | gm | gm-gnc | huber>gm |
-|---|---|---|---|---|---|
-| clean / near | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
-| clean / far | 8.3 | <= 8.3 | <= 8.3 | <= 8.3 | <= 8.3 |
-| specular 0.6 / near | 4.2 | 0.0 | 0.0 | 0.0 | 0.0 |
-| specular 0.6 / far | 16.7 | 4.2 | 4.2 | 12.5 | 4.2 |
-| clutter 15% / near | 45.8 | 0.0 | 0.0 | 0.0 | 0.0 |
-| clutter 15% / far | 50.0 | 4.2 | 4.2 | 8.3 | 4.2 |
-| spec 1.0 + clutter 25% / near | 50.0 | 4.2 | 0.0 | 4.2 | 4.2 |
-| spec 1.0 + clutter 25% / far | 54.2 | 12.5 | 4.2 | 12.5 | 12.5 |
+| condition / start | l2 fail% | huber | gm |
+|---|---|---|---|
+| clean / near | 0.0 | 0.0 | 0.0 |
+| clean / far | 8.3 | <= 8.3 | <= 8.3 |
+| specular 0.6 / near | 4.2 | 0.0 | 0.0 |
+| specular 0.6 / far | 16.7 | 4.2 | 4.2 |
+| clutter 15% / near | 45.8 | 0.0 | 0.0 |
+| clutter 15% / far | 50.0 | 4.2 | 4.2 |
+| spec 1.0 + clutter 25% / near | 50.0 | 4.2 | 0.0 |
+| spec 1.0 + clutter 25% / far | 54.2 | 12.5 | 4.2 |
 
 Median |azimuth| error, hardest condition, far start: l2 0.0740, huber
-0.0154, gm 0.0036. Direct GM is the clear winner. Honest negatives: GNC
-annealing and huber-then-GM do NOT beat direct GM here (12.5% vs 4.2%
-fail on the hardest far case); the extra machinery is kept for problems
-with worse basins, not used by default.
+0.0154, gm 0.0036. Direct GM is the clear winner.
+
+v1.9.2 REMOVAL (not a refinement): the gm-gnc and huber>gm columns are
+gone from the table and from the engine. The owner's write-up (150
+trials/cell, near starts) falsified them: 40-43% fail on the hard case
+vs 7% for warm-start direct GM, 47-61 iterations vs 7-20. fitGncGm and
+fitHuberThenGm no longer exist; the fitLayerParams gnc option is gone
+and an unknown robust kind throws instead of falling back. A falsified
+path is removed, not compared.
 
 GM scale sensitivity (hardest condition, far start, direct GM):
 c=1.5: 0.0% fail, med|az| 0.0017; c=3.0: 0.0%, 0.0023; c=6.0: 8.3%,
@@ -97,6 +113,24 @@ p x p information matrix (cheap). Measured (float64):
 Ridge check (oracle section 5, cap 15deg, 24 trials): centered prior beats
 zero-centered prior (median relative error printed in the test log); the
 zero-centered prior biases, the centered one does not.
+
+### v1.9.2: the fired branch solves the stacked ridge system
+
+When the trigger fires, the solver now QR-factorizes the stacked system
+[J; sqrt(lambda) I] against [y - J c; 0] and shifts back by the center c
+(solveQRStacked), instead of QR on J alone. This is the numerically safe
+way to apply the centered ridge prior on exactly the frames where
+conditioning is bad; normal equations would square the condition number
+of an already ill-conditioned J. Default lambda = 0 reduces to the plain
+QR answer (all existing trigger behavior and tests unchanged); a caller
+with a prior passes lambda and center.
+
+Measured through the production path (cap 15deg, noise 0.01, lambda =
+1e-4 ||J||_2^2, prior = truth with 30% error, 24 trials): plain QR median
+relative error 5.24, centered stacked QR 0.20 (26x better; the oracle's
+normal-equation numbers were 6.8 plain vs 0.10 centered). Stacked QR is
+bit-compatible with the explicit ridge normal equations
+(rel err < 1e-9) and with lambda = 0 equals plain QR (rel err < 1e-12).
 
 ## 4. v1.8.1 follow-up: GM tightness, hardest-condition near starts, NIS under outliers
 
