@@ -79,7 +79,17 @@ export function buildRaymarchFragment(
   const eps = opts.eps ?? RAYMARCH_EPS;
   const skyTop = opts.skyTop ?? [0.12, 0.2, 0.35];
   const skyBottom = opts.skyBottom ?? [0.02, 0.03, 0.06];
-  const uniDecls = sdfUniforms.map(n => `uniform float ${n};`).join('\n');
+  // sdfToGlsl already declares the parameterized uniforms inside its own
+  // GLSL (its test-pinned contract), so declare here only the names the map
+  // does not declare itself. Declaring them twice is a hard error on strict
+  // GLSL compilers and the assembled shader fails to compile at all.
+  const uniDecls = sdfUniforms
+    .filter(n => !mapGlsl.includes(`uniform float ${n};`))
+    .map(n => `uniform float ${n};`)
+    .join('\n');
+  // GLSL ES 3.00 has no implicit int-to-float conversion in expressions, so
+  // numeric options are emitted as float literals (100 becomes 100.0).
+  const fnum = (v: number): string => (Number.isInteger(v) ? v.toFixed(1) : String(v));
   return `#version 300 es
 precision highp float;
 out vec4 outColor;
@@ -101,7 +111,7 @@ ${uniDecls}
 ${mapGlsl}
 
 vec3 sdfNormal(vec3 p){
-  const float e = ${eps};
+  const float e = ${fnum(eps)};
   float dx = map(p + vec3(e, 0.0, 0.0)).x - map(p - vec3(e, 0.0, 0.0)).x;
   float dy = map(p + vec3(0.0, e, 0.0)).x - map(p - vec3(0.0, e, 0.0)).x;
   float dz = map(p + vec3(0.0, 0.0, e)).x - map(p - vec3(0.0, 0.0, e)).x;
@@ -146,10 +156,10 @@ vec2 raymarch(vec3 ro, vec3 rd, int budget){
     if (i >= budget) break;
     vec3 p = ro + rd * t;
     vec2 h = map(p);
-    if (h.x < ${eps}) return vec2(t, h.y);
+    if (h.x < ${fnum(eps)}) return vec2(t, h.y);
     t += h.x * uStepScale;
     m = h.y;
-    if (t > ${maxDist}) break;
+    if (t > ${fnum(maxDist)}) break;
   }
   return vec2(-1.0, m);
 }

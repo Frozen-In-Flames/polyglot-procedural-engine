@@ -280,8 +280,14 @@ vec2 sdf_min2(vec2 a, vec2 b){ return a.x <= b.x ? a : b; }
 vec2 sdf_max2(vec2 a, vec2 b){ return a.x >= b.x ? a : b; }
 `;
 
+// GLSL ES 3.00 does not implicitly convert int literals inside float
+// expressions, so baked numbers are emitted as float literals (2 -> 2.0).
+function fnum(v: number): string {
+  return Number.isInteger(v) ? v.toFixed(1) : String(v);
+}
+
 function glslVal(v: SdfValue): string {
-  return typeof v === 'number' ? `(${v})` : v.uniform;
+  return typeof v === 'number' ? `(${fnum(v)})` : v.uniform;
 }
 
 function glslVec(v: Vec3): string {
@@ -325,7 +331,7 @@ function emitNode(node: SdfNode, pExpr: string): { code: string; out: string } {
     }
     case 'plane': {
       const n = glslVec(node.n);
-      return { code: `vec2 ${t} = vec2(dot(${pExpr}, ${n}) + (${node.h}), ${mat(node)});`, out: t };
+      return { code: `vec2 ${t} = vec2(dot(${pExpr}, ${n}) + (${fnum(node.h)}), ${mat(node)});`, out: t };
     }
     case 'union': {
       const parts = node.children.map(c => emitNode(c, pExpr));
