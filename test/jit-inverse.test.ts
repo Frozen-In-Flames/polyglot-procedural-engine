@@ -11,7 +11,7 @@
 // noise. theta = (az, el, I, A).
 //
 // Additional engine work beyond the oracle: (G) a geometry parameter in the
-// JIT loop, (H) a model-mismatch stress test, (I) a measured timing model.
+// JIT loop, (H) a model-mismatch stress test, (I) a counted cost model.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -442,40 +442,105 @@ test('jit: unmodeled specular dominates noise (bias floor, not 1/sqrt(m))', () =
 });
 
 // ---------------------------------------------------------------------------
-// I. Measured timing: per-frame cost scales linearly in m (measured, not
-// arithmetic), and the toy frame fits a generous budget.
+// I. Per-frame cost scales linearly in m, asserted on counted model
+// evaluations (deterministic units), not wall-clock time. This test used
+// to assert a timer ratio t(4m)/t(m) ~ 4; that oracle measured machine
+// load, not scaling, and failed intermittently under VM load (observed
+// ratio 2.26x) while the scaling itself never changed. The replacement
+// counts the exact pixel values solveFrame consumes: per-frame work
+// W(m) = (evaluations per pixel) x m, where the evaluations-per-pixel
+// factor is a property of the solver, independent of m and of load.
 // ---------------------------------------------------------------------------
-test('jit: measured per-frame time scales linearly with pixel count', () => {
+test('jit: per-frame cost scales linearly with pixel count (counted evaluations, not wall-clock)', () => {
   const px = sphereGrid(64);
   const M = px.count;
-  const gauss = makeRng(9191);
   const thTrue = [0.6, 0.5, 1.2, 0.15];
-  const R = (th: number[]) => renderLambert(th, px, RHO);
-  const J = (th: number[]) => jacLambert(th, px, RHO);
+  const P = thTrue.length;
 
-  // Batch frames per measurement so timer noise does not dominate.
-  const frameAt = (m: number) => {
+  // Counted solve harness: wraps R and J and accumulates the exact
+  // number of scalar pixel values the solver consumes (render values
+  // plus Jacobian entries). `cap` selects the fixed-budget path: solve
+  // on at most `cap` pixels no matter how large the frame is.
+  const workAt = (m: number, cap?: number) => {
     const uni = makeUniform(9300 + m);
     const idx = new Set<number>();
     while (idx.size < m) idx.add(Math.floor(uni() * M));
-    const sub = subRows(px.normals, [...idx]);
-    const Rs = (th: number[]) => renderLambertN(th, sub, RHO);
-    const Js = (th: number[]) => jacLambertN(th, sub, RHO);
-    const frames: { y: number[]; init: number[] }[] = [];
-    for (let f = 0; f < 20; f++) {
-      const y = Rs(thTrue).map((v) => v + SIG * gauss());
-      frames.push({ y, init: linearInitLight(y, { normals: sub, count: sub.length }, RHO) });
+    let rows = [...idx];
+    if (cap !== undefined) rows = rows.slice(0, cap);
+    const sub = subRows(px.normals, rows);
+    const n = sub.length;
+    let counted = 0;
+    const Rs = (th: number[]) => {
+      const v = renderLambertN(th, sub, RHO);
+      counted += v.length;
+      return v;
+    };
+    const Js = (th: number[]) => {
+      const Jm = jacLambertN(th, sub, RHO);
+      counted += Jm.length * P;
+      return Jm;
+    };
+    const gauss = makeRng(9400 + m);
+    let total = 0;
+    const FRAMES = 20;
+    for (let f = 0; f < FRAMES; f++) {
+      const y = renderLambertN(thTrue, sub, RHO).map((v) => v + SIG * gauss());
+      const init = linearInitLight(y, { normals: sub, count: sub.length }, RHO);
+      counted = 0;
+      solveFrame(y, init, Rs, Js, S2, {});
+      total += counted;
     }
-    const total = medianTimeMs(() => {
-      for (const fr of frames) solveFrame(fr.y, fr.init, Rs, Js, S2, {});
-    }, 5);
-    return total / 20;
+    const perFrame = total / FRAMES;
+    return { pixels: n, perFrame, evalsPerPixel: perFrame / n };
   };
 
-  const tQuarter = frameAt(Math.floor(M / 4));
-  const tFull = frameAt(M);
-  const ratio = tFull / tQuarter;
-  // Linear-in-m model predicts ~4x for 4x pixels; wide band for timer noise.
-  assert.ok(ratio > 2.5 && ratio < 5.5, `time ratio 4x pixels: ${ratio.toFixed(2)}`);
-  assert.ok(tFull < 50, `full frame ${tFull.toFixed(1)}ms exceeds budget`);
+  // The scaling assertion, factored out so the negative control below
+  // runs the identical check on a path where it must fail.
+  const assertLinear = (
+    small: { perFrame: number; evalsPerPixel: number },
+    big: { perFrame: number; evalsPerPixel: number },
+  ) => {
+    const ratio = big.perFrame / small.perFrame;
+    // Measured exactly: work ratio 3.5821 (not 4.0000, because the
+    // noisier quarter-size problem averages slightly more GN iterations
+    // and backtracks per frame). Counts are seed-deterministic; the
+    // band absorbs iteration-count jitter only, never machine load.
+    assert.ok(ratio > 3.2 && ratio < 4.4, `counted work ratio 4x pixels: ${ratio.toFixed(4)}`);
+    const cRatio = big.evalsPerPixel / small.evalsPerPixel;
+    // Measured exactly: 0.8955 (21.00 vs 23.45 evals per pixel).
+    assert.ok(cRatio > 0.8 && cRatio < 1.1, `evals per pixel drifted with m: ${cRatio.toFixed(4)}`);
+  };
+
+  const quarter = workAt(Math.floor(M / 4));
+  const full = workAt(M);
+  assert.equal(quarter.pixels, Math.floor(M / 4));
+  assert.equal(full.pixels, M);
+  assertLinear(quarter, full);
+
+  // Negative control: on the fixed-budget path both frame sizes solve
+  // on exactly 128 pixels, so counted work follows the cap, not m
+  // (measured capped ratio 0.9524), and the identical scaling assertion
+  // must reject it. If this control ever stops throwing, the assertion
+  // above has no teeth.
+  const capQ = workAt(Math.floor(M / 4), 128);
+  const capF = workAt(M, 128);
+  assert.equal(capQ.pixels, 128);
+  assert.equal(capF.pixels, 128);
+  assert.throws(() => assertLinear(capQ, capF), /counted work ratio/);
+
+  // Wall-clock sanity only, never the scaling claim: the toy frame fits
+  // a generous budget. Median of 5 batches of 20 frames; the bound is
+  // set far above the observed solve time so load cannot trip it.
+  const gaussT = makeRng(9191);
+  const R = (th: number[]) => renderLambert(th, px, RHO);
+  const J = (th: number[]) => jacLambert(th, px, RHO);
+  const frames: { y: number[]; init: number[] }[] = [];
+  for (let f = 0; f < 20; f++) {
+    const y = R(thTrue).map((v) => v + SIG * gaussT());
+    frames.push({ y, init: linearInitLight(y, px, RHO) });
+  }
+  const batchMs = medianTimeMs(() => {
+    for (const fr of frames) solveFrame(fr.y, fr.init, R, J, S2, {});
+  }, 5);
+  assert.ok(batchMs / 20 < 250, `sanity: full frame ${(batchMs / 20).toFixed(1)}ms over generous budget`);
 });
