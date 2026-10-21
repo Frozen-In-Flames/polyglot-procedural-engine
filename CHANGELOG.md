@@ -3,6 +3,42 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [2.0.1] - Shader compile fix, pinned with contract tests (2026-10-20)
+
+Patch release. The v2.0.0 live demo's raymarch fragment shader failed
+compilation in real browsers (the fix itself landed in commit 8aa9af6;
+this release packages it with its regression controls).
+
+**Root cause.** Two GLSL ES 3.00 defect classes in the assembled
+fragment shader. First, `buildRaymarchFragment` declared the
+parameterized SDF uniforms a second time even though `sdfToGlsl`
+already declares them inside its own GLSL; duplicate declarations are a
+redefinition error. Second, numeric shader options were interpolated
+as raw JS numbers, so the default maxDist emitted `t > 100`, a
+float-vs-int comparison GLSL ES 3.00 rejects, and baked SDF values had
+the same defect. The compile failure threw during module evaluation,
+which killed the demo panel and the march loop. The escape reached the
+owner because verification stopped at HTTP, grep, and Node checks, and
+Node has no GL context.
+
+**Fix.** `buildRaymarchFragment` now declares only the uniform names
+the map GLSL does not declare itself, and emits eps and maxDist as
+float literals; `sdf.ts` baked values (`glslVal`, plane height) emit as
+float literals the same way. The demo pages also gained panel
+close/reopen toggles (44px close button, compact Menu pill) so the
+overlay panels no longer trap the touch joystick area on phones.
+
+**Controls added.** `test/glsl-contract.test.ts` pins both defect
+classes at the source-string level, each checker with a negative
+control (planted defects it must catch) and a specificity control
+(legal integer GLSL it must not flag). `docs/ship-gate.md` makes the
+release verification control explicit: unit suite green, GLSL contract
+tests, and a real-browser playthrough required before any release or
+demo is reported done. The deployed FX demo bundle is preserved in
+`demo/fx-live/` because its TypeScript sources were never committed to
+main, so a rebuild from main cannot silently lose the panel. Suite:
+543/543 green.
+
 ## [2.0.0] - Dev flexibility: building games with just math (2026-10-20)
 
 Seven opt-in features; no default changes. 538/538 suite green (518 prior +
