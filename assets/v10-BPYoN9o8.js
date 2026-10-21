@@ -74,8 +74,6 @@ uniform float uFoveate;
 uniform vec3 uMatColor[8];
 uniform float uMatSpec[8];
 uniform int uDebug;
-${e.map(r=>`uniform float ${r};`).join(`
-`)}
 ${t}
 
 vec3 sdfNormal(vec3 p){
@@ -127,7 +125,7 @@ vec2 raymarch(vec3 ro, vec3 rd, int budget){
     if (h.x < ${i}) return vec2(t, h.y);
     t += h.x * uStepScale;
     m = h.y;
-    if (t > ${s}) break;
+    if (t > float(${s})) break;
   }
   return vec2(-1.0, m);
 }

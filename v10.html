@@ -70,6 +70,21 @@
       #telemetry { list-style: none; margin: 8px 0 0; padding: 0; font-size: 11px; }
       #telemetry li { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; border-top: 1px solid #1e293b; }
       #telemetry li span:last-child { color: #67e8f9; font-weight: 700; text-align: right; }
+      .panel-close {
+        position: absolute; top: 6px; right: 6px; width: 44px; height: 44px;
+        display: flex; align-items: center; justify-content: center;
+        background: #1e293b; color: #e2e8f0; border: 1px solid #334155;
+        border-radius: 8px; font-size: 18px; line-height: 1; cursor: pointer; z-index: 2;
+      }
+      #hud h1, #hud p { margin-right: 44px; }
+      #side h2 { margin-right: 44px; }
+      #menu-open {
+        position: fixed; top: 12px; left: 12px; z-index: 11; display: none;
+        align-items: center; min-height: 44px; padding: 0 18px;
+        background: rgba(10, 14, 24, 0.86); color: #e2e8f0;
+        border: 1px solid #334155; border-radius: 999px;
+        font: 700 13px system-ui, sans-serif; cursor: pointer;
+      }
     </style>
     <script type="module" crossorigin src="./assets/v10-BPYoN9o8.js"></script>
     <link rel="modulepreload" crossorigin href="./assets/semantic-DrEJTg_R.js">
@@ -78,6 +93,7 @@
     <div id="app"><canvas id="scene"></canvas></div>
     <div id="crosshair"><span>solve target: brighten this region</span></div>
     <div id="hud" class="panel">
+      <button class="panel-close" type="button" aria-label="Close panel">✕</button>
       <h1>POLYGLOT PROCEDURAL ENGINE<span id="ver">v2.0.0</span></h1>
       <p><span class="zero">zero asset dependence:</span> every pixel is math.</p>
       <ul id="pipeline">
@@ -96,6 +112,7 @@
       <p style="margin-top:8px"><a href="./index.html">First Light demo</a></p>
     </div>
     <div id="side" class="panel">
+      <button class="panel-close" type="button" aria-label="Close panel">✕</button>
       <h2>Tuning Deck</h2>
       <div id="deck"></div>
       <h2 style="margin-top:10px">Solver log</h2>
@@ -131,5 +148,26 @@
       </ul>
     </div>
     <div id="hint">Math-first engine: SDF world, raymarch, Lambert, inverse solve, plus the v2.0.0 dev flexibility panel. Select input: <select id="input-scheme"><option value="desktop">desktop</option><option value="touch">touch</option></select></div>
+    <button id="menu-open" type="button">☰ Menu</button>
+    <script>
+      (function () {
+        var panels = [document.getElementById('hud'), document.getElementById('side')];
+        var openBtn = document.getElementById('menu-open');
+        function refresh() {
+          var anyHidden = panels.some(function (p) { return p.style.display === 'none'; });
+          openBtn.style.display = anyHidden ? 'flex' : 'none';
+        }
+        panels.forEach(function (p) {
+          p.querySelector('.panel-close').addEventListener('click', function () {
+            p.style.display = 'none';
+            refresh();
+          });
+        });
+        openBtn.addEventListener('click', function () {
+          panels.forEach(function (p) { p.style.display = ''; });
+          refresh();
+        });
+      })();
+    </script>
   </body>
 </html>
