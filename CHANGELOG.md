@@ -3,6 +3,53 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [2.0.2] - Per-cell grid heights (2026-10-20)
+
+Patch release, step 2 of the road to v3.0.0. Grid worlds lose their one
+documented v2.0.0 limit: walls are no longer one height per world.
+
+**What.** `GridWorld` gains an optional `heights` array parallel to
+`cells`; each solid cell becomes a box of its own height, spanning
+`[origin.y, origin.y + heights[i]]`. `raycastGrid` dispatches on it: a
+per-cell DDA walk intersects the ray's footprint interval over each
+solid cell with the interval where the ray is inside that cell's own y
+span, so a ray between two heights passes over the low cell and hits
+the tall cell's face, and a descending ray lands on a cell's top face.
+New `gridDistance(grid, p)` returns the exact distance to the nearest
+wall box (a minimum of exact box distances, so it never overestimates
+and sphere tracing it stays correct against the taller geometry).
+`gridHeightAt` and `gridSetHeight` round out the API. Generation stays
+opt-in: `generateGrid(seed, w, d, { heights: true, heightLevels })`
+runs a heights pass after the cell pass, continuing the same Pcg32
+stream (one draw per solid cell, levels default to multipliers
+[0.5, 1, 1.5, 2] of the base height).
+
+**Why.** One height per world forced every grid level into flat-topped
+mazes. Per-cell heights let a dev build stepped, tiered worlds,
+rooftops, and mesas from the same seed system and the same few hundred
+bytes of level data, with exact raycasts and an exact distance field
+that composites with the SDF layers as before.
+
+**Back-compat.** Worlds without a heights array, or with every solid
+cell at the world height, run the original v2.0.0 code path and are
+bit-identical to v2.0.0; the suite verifies this with a ray battery
+against plain twins, generated worlds included. Default generation is
+untouched (the heights pass runs only on opt-in, after the cell pass),
+so existing scenes and the live demo see the same worlds as before.
+
+**Measured pins** (test/grid-heights.test.ts, 12 new tests). Step scene
+(low top 1, tall top 3): a ray at y = 2 hits the tall face at exactly
+2.5; straight-down rays land at exactly 4 and 2 on the two tops; a
+descending ray lands on the tall top at 2.5 / 0.6 after overflying the
+low cell; a camera above every height misses. Sphere tracing
+`gridDistance` never overshoots the analytic hit on six pinned rays
+(and lands within 0.01 of it). A negative control runs the step case
+against uniform-height shims and gets the wrong answer both ways (low
+cell at 1.5; clean miss), proving the pins read the per-cell heights.
+Generation for seed 777 (16x16, density 0.3, base height 2) draws
+levels 1, 2, 3, 4 exactly 28, 37, 25, 39 times over 129 solid cells,
+cells bit-identical to the no-heights world. Suite: 555/555 green.
+
 ## [2.0.1] - Shader compile fix, pinned with contract tests (2026-10-20)
 
 Patch release. The v2.0.0 live demo's raymarch fragment shader failed

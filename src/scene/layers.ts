@@ -81,8 +81,9 @@ export interface Field4D {
 
 export interface GridLayer {
   kind: 'grid';
-  /** The cell-map world (src/scene/grid.ts). Walls are full-height
-   *  columns over solid cells; raycast exactly by DDA. */
+  /** The cell-map world (src/scene/grid.ts). Walls are columns over
+   *  solid cells, each of its own height when the world carries per-cell
+   *  heights; raycast exactly by DDA. */
   grid: GridWorld;
   /** Color per wall hit: cell coordinates, the face crossed, hit point. */
   color: (cellX: number, cellZ: number, side: 'x' | 'z', p: Vec3) => Vec3;

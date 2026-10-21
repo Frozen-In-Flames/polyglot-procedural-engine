@@ -46,6 +46,22 @@ pins an axis hit at exactly 5 and a 45-degree diagonal entry at exactly
 1.5 * sqrt(2). `raycastGrid(grid, origin, dir, maxDist)` is public for
 dev-side queries (line of sight, projectile sweeps) without a render.
 
+**Per-cell heights (v2.0.2).** A world may carry a `heights` array
+parallel to `cells`; each solid cell is then a box of its own height,
+spanning `[origin.y, origin.y + heights[i]]`. Stepped tiers, rooftops,
+and mesas come from the same cell map. The DDA respects each box: a ray
+between two heights passes over the low cell and hits the tall one
+(pinned: low top 1, tall top 3, a ray at y = 2 hits the tall face at
+exactly 2.5), and a descending ray lands on a cell's top face at the
+exact crossing. `gridHeightAt` / `gridSetHeight` read and write single
+cell heights; `gridDistance(grid, p)` is the exact distance to the
+nearest wall box (a minimum of exact box distances), so it never
+overestimates and sphere tracing it never overshoots the analytic DDA
+hit; the suite pins both properties on a stepped scene. Back-compat is
+a hard rule: a world with no `heights`, or with every solid cell at the
+world height, runs the original v2.0.0 code path and produces
+bit-identical results, verified by a ray battery against a plain twin.
+
 ## 2. March policy as a choice
 
 **What.** `MarchOpts.policy`: `'sphere'` (default) is the existing
@@ -151,6 +167,18 @@ The suite pins: same seed deep-equals across calls, different seeds
 differ, border cells are always walled when `border` is on, and
 regeneration reproduces a fresh `generateGrid` of the new seed exactly.
 
+**Height generation (v2.0.2, opt-in).** `generateGrid(seed, w, d,
+{ heights: true })` adds per-cell heights. The heights pass continues
+the same Pcg32 stream after the cell pass (one draw per solid cell, in
+row-major order, picking from `heightLevels`, default multipliers
+[0.5, 1, 1.5, 2] of the base height), so toggling heights never
+reshuffles the maze: the cells are bit-identical with the option on or
+off, and the heights are bit-identical across runs of the same seed.
+Pinned for seed 777 (16x16, density 0.3, base height 2): the 129 solid
+cells draw levels 1, 2, 3, 4 exactly 28, 37, 25, and 39 times. Default
+generation (no `heights` option) is bit-identical to v2.0.0 worlds;
+existing scenes and the live demo are untouched.
+
 ## 6. Hookable render stages
 
 **What.** The frame render is dataflow (samples, hits, columns), and
@@ -211,7 +239,8 @@ function over an input table twice demanding bit-identical outputs.
   framebuffer. The WebGL raymarcher remains the full-frame renderer.
 - Fixed-step marching tunnels through features thinner than the step
   (see feature 2); sphere tracing stays the default.
-- Grid walls are full-height columns of one height per world; per-cell
-  heights are future work.
+- Grid walls are vertical cell boxes: since v2.0.2 each cell carries its
+  own height, but there are no slopes, overhangs, or roofs within a
+  cell; a cell is open or solid at one height.
 - Telemetry cost counts field evaluations, not wall-clock time; it is the
   cost-model unit, comparable across scenes and ports, not a profiler.

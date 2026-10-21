@@ -66,7 +66,7 @@ export * from './inverse/geograd.js';
 export * from './inverse/varpro.js';
 export * from './render/temporal.js';
 export * from './audio/acoustics.js';
-export { makeGrid, gridInBounds, gridSolid, gridSet, raycastGrid, generateGrid, GridLevel } from './scene/grid.js';
+export { makeGrid, gridInBounds, gridSolid, gridSet, gridSetHeight, gridHeightAt, gridDistance, raycastGrid, generateGrid, GridLevel } from './scene/grid.js';
 export type { GridWorld, GridOpts, GridHit, GenerateOpts } from './scene/grid.js';
 export type { GridLayer, MarchPolicy, MarchStats } from './scene/layers.js';
 export { FrameMarcher, DEFAULT_FRAME_PARAMS } from './render/frame.js';
