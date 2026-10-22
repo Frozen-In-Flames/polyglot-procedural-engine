@@ -3,6 +3,69 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [2.0.7] - Cross-language tick parity (2026-10-22)
+
+Patch release, step 7 of the road to v3.0.0. One fixed simulation
+tick, run from the same seed and the same scripted inputs, now
+produces the same world state in TypeScript, Python, and C++, bit
+for bit. No demo change: the demo does not consume the parity
+harness, and it is untouched.
+
+**What.** A canonical tick scenario and golden-trace harness.
+`docs/tick-parity.md` specifies the scenario (seed 20261022, 600
+ticks at the shipped `TICK_DT = 1/60`, the engine's own gamefeel
+tuning, an analytic plane + ramp + sphere SDF world, a Pcg32-driven
+input script with 20-tick direction legs and a deliberate
+every-third-leg walk at the ramp), the canonical state
+serialization (raw float64 bit patterns, little-endian, fixed field
+order, 62 bytes per tick), and the cumulative FNV-1a 64 digest.
+`parity/golden.tsv` holds the agreed 600 per-tick digests. The
+shipped TypeScript tick runs in process in
+`test/tick-parity.test.ts`; the new ports are
+`python/xrgen/ticksim.py` (with `python/test/test_tick_parity.py`)
+and `parity/runner.cpp`, each reproducing `tickCharacter`'s
+operation order statement for statement. New canonical length
+functions `len2` / `len3` in `src/math/determinism.ts`: sqrt of the
+sum of squares in a fixed order.
+
+**Why.** The polyglot promise is that a seed means the same thing
+in every language, and it was verified piecemeal (the PCG hash
+against published vectors, the Python foundry against its TS
+mirror) but never for the unit that moves the world. Measuring it
+found a real divergence on the first attempt: the tick called libm
+`hypot`, and hypot is not correctly rounded. With
+w = (1/sqrt(2))*4, V8's Math.hypot(w, w) returns exactly 4 while
+CPython, glibc, and the sum-of-squares form return
+3.9999999999999996, splitting the trace at tick 0; glibc and
+CPython then split from each other at tick 221. Three different
+answers cannot be reconciled by a tolerance, so hypot left the
+tick path: lengths now use `len2` / `len3` everywhere. That is a
+deliberate change to shipped behavior, bounded at 1 ulp in tick
+lengths, made because cross-language identity is worth more than
+one platform's last bit.
+
+**Measured pins.** All three traces agree on all 600 ticks:
+exact-match rate 600/600 for each of the three language pairs,
+worst cross-language deviation exactly 0 (the digest covers every
+serialized field's bits). Scenario coverage, measured on the
+canonical run: grounded on 175 of 600 ticks, 9 jump takeoffs, ramp
+contact on 52 ticks, sphere contact on 4 ticks. Negative controls,
+all asserted in the suite: gravity perturbed by 1e-9, the seed
+perturbed by 1, and the input script shifted by one tick each
+produce traces that disagree with the golden trace, in every
+language where the control applies. The root-cause case is also
+pinned directly in `test/determinism.test.ts`
+(`len2(w, w) === 3.9999999999999996`).
+
+**Honest limits.** The XPBD contact solver and the particle
+systems are TypeScript-only today; there is no second
+implementation for them to agree with, and this release does not
+claim otherwise. The C# / Swift / Kotlin trees ship provider
+interfaces and audio drivers, not a tick. The C++ port is verified
+by compiling `parity/runner.cpp` with g++ (the parity test skips
+that leg, loudly, where no g++ exists); the Emscripten WASM build
+is not part of this verification.
+
 ## [2.0.6] - Interval Lipschitz guaranteed step (2026-10-22)
 
 Patch release, step 6 of the road to v3.0.0. Marching steps become

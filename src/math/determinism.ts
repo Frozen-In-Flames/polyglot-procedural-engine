@@ -65,6 +65,29 @@ export class Pcg32 {
 }
 
 // ---------------------------------------------------------------------------
+// Canonical lengths for exact paths. libm hypot is NOT correctly rounded
+// and differs across languages by 1 ulp on ordinary inputs: measured on
+// the v2.0.7 parity scenario, V8's Math.hypot(w, w) with
+// w = (1/sqrt(2))*4 returns exactly 4, while CPython, glibc, and the
+// sqrt form below all return 3.9999999999999996; glibc and CPython
+// hypot also split from each other later in the same trace. Anything
+// that must match across languages therefore uses sqrt of the sum of
+// squares in a fixed order: only correctly rounded IEEE operations.
+// The naive form overflows near 1e154; the exact path is for
+// game-scale magnitudes, far inside that.
+// ---------------------------------------------------------------------------
+
+/** 2D length on the exact path: sqrt(x*x + y*y), in that order. */
+export function len2(x: number, y: number): number {
+  return Math.sqrt(x * x + y * y);
+}
+
+/** 3D length on the exact path: sqrt((x*x + y*y) + z*z), in that order. */
+export function len3(x: number, y: number, z: number): number {
+  return Math.sqrt(x * x + y * y + z * z);
+}
+
+// ---------------------------------------------------------------------------
 // Quintic fade, multiply/add only: S(t) = 6t^5 - 15t^4 + 10t^3.
 // Factored form t^3 (t(6t - 15) + 10) keeps one rounding path everywhere.
 // ---------------------------------------------------------------------------

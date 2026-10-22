@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  Pcg32, pcgHash32, quinticFade, sinPoly, cosPoly, f32,
+  Pcg32, pcgHash32, quinticFade, sinPoly, cosPoly, f32, len2, len3,
 } from '../src/math/determinism.js';
 
 test('determinism: PCG matches the published RXS-M-XS reference vectors', () => {
@@ -72,4 +72,18 @@ test('determinism: sinPoly within 1e-9 of Math.sin everywhere', () => {
 test('determinism: f32 is the canonical float32 narrowing', () => {
   assert.equal(f32(0.1), Math.fround(0.1));
   assert.equal(f32(f32(1.5) * f32(2.25)), Math.fround(Math.fround(1.5) * Math.fround(2.25)));
+});
+
+test('determinism: len2/len3 pin the canonical sqrt form (the hypot case)', () => {
+  // The measured v2.0.7 root cause: with w = (1/sqrt(2))*4, V8's
+  // Math.hypot(w, w) returns exactly 4, while the canonical sqrt form
+  // (and CPython and glibc on the same input) returns
+  // 3.9999999999999996. len2 must be the sqrt form, bit for bit.
+  const w = (1 / Math.sqrt(2)) * 4;
+  assert.equal(len2(w, w), 3.9999999999999996);
+  assert.equal(len2(3, 4), 5);
+  assert.equal(len3(2, 3, 6), 7);
+  assert.equal(len3(0, 0, 0), 0);
+  // Fixed summation order: (x*x + y*y) + z*z, not z first.
+  assert.equal(len3(1e8, 1, 1e8), Math.sqrt(1e8 * 1e8 + 1 * 1 + 1e8 * 1e8));
 });

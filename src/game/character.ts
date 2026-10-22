@@ -21,6 +21,7 @@
 // contact resolve turn into a slide down the tangent.
 
 import type { Vec3 } from '../math/vec.js';
+import { len2, len3 } from '../math/determinism.js';
 
 export interface CharacterParams {
   /** Capsule radius (sphere radius at each endpoint). */
@@ -89,7 +90,11 @@ export function makeCharacter(pos: Vec3): CharacterState {
 }
 
 function norm3(v: Vec3): Vec3 {
-  const l = Math.hypot(v[0], v[1], v[2]) || 1;
+  // Lengths use the canonical exact-path forms from math/determinism
+  // (sqrt of sum of squares), never Math.hypot: libm hypot differs
+  // across languages by 1 ulp, which is exactly what the cross-
+  // language tick parity harness (docs/tick-parity.md) measures.
+  const l = len3(v[0], v[1], v[2]) || 1;
   return [v[0] / l, v[1] / l, v[2] / l];
 }
 
@@ -117,7 +122,7 @@ export function tickCharacter(
   st.jumpHeld = input.jumpHeld;
 
   // 3. Horizontal control: accelerate toward the wish velocity.
-  const wishLen = Math.hypot(input.move[0], input.move[1]);
+  const wishLen = len2(input.move[0], input.move[1]);
   const topSpeed = st.grounded ? p.maxGroundSpeed : p.maxAirSpeed;
   const accel = st.grounded ? p.moveAccel : p.airAccel;
   let wishX = 0;
@@ -128,7 +133,7 @@ export function tickCharacter(
   }
   const dx = wishX - st.vel[0];
   const dz = wishZ - st.vel[2];
-  const dl = Math.hypot(dx, dz);
+  const dl = len2(dx, dz);
   const maxD = accel * dt;
   if (dl <= maxD) {
     st.vel[0] = wishX;
@@ -139,7 +144,7 @@ export function tickCharacter(
   }
   // Friction when grounded with no wish.
   if (st.grounded && wishLen <= 1e-12) {
-    const sp = Math.hypot(st.vel[0], st.vel[2]);
+    const sp = len2(st.vel[0], st.vel[2]);
     if (sp > 1e-12) {
       const ns = Math.max(0, sp - p.groundFriction * dt);
       st.vel[0] *= ns / sp;
