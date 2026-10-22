@@ -14,6 +14,13 @@
 // falls out of depth order. Craft-material looks ride the v1.6.0 TEV
 // material system; layers take color callbacks and never reimplement them.
 //
+// Emission layers (v2.0.8) are the volumetric exception: an analytic
+// tokamak-geometry emissivity field (src/scene/emission-field.ts) that
+// owns no surface. marchScene integrates its radiance along the ray up
+// to the nearest surface hit and adds it to that hit's color, so
+// occlusion still falls out of depth order; standing alone it returns
+// its glow at depth Infinity.
+//
 // Gameplay planes: a PlaneStack is an ordered stack of 2.5D layers the
 // player inhabits and hops between. Hopping is a depth translation of the
 // player, never a camera trick.
@@ -24,8 +31,12 @@ import { irlsGnFit } from '../inverse/robust.js';
 import { raycastGrid, type GridWorld } from './grid.js';
 import { makeGridTerrain, marchTerrain } from './terrain-field.js';
 import { marchInterval, terrainIntervalField } from '../math/interval-march.js';
+import {
+  emissionQuadrature,
+  type EmissionField,
+} from './emission-field.js';
 
-export type DimKind = '2d' | '2.5d' | '3d' | '4d' | 'grid';
+export type DimKind = '2d' | '2.5d' | '3d' | '4d' | 'grid' | 'emission';
 
 export interface Ray {
   origin: Vec3;
@@ -91,7 +102,24 @@ export interface GridLayer {
   color: (cellX: number, cellZ: number, side: 'x' | 'z', p: Vec3) => Vec3;
 }
 
-export type Layer = Layer2D | Layer25D | Solid3D | Field4D | GridLayer;
+export interface EmissionLayer {
+  kind: 'emission';
+  /** The emission field (src/scene/emission-field.ts): tokamak
+   *  geometry emissivity, analytic at every point. */
+  field: EmissionField;
+  /** Constant tint multiplied into the integrated emission.
+   *  Default [1, 1, 1]. Ignored when colorAt is given. */
+  tint?: Vec3;
+  /** Spatial tint field, evaluated per quadrature sample; overrides
+   *  tint. This is the layer system's usual color callback, read
+   *  volumetrically: radiance is the line integral of
+   *  emission(p) * colorAt(p) along the ray. */
+  colorAt?: (p: Vec3) => Vec3;
+  /** Scalar multiplier on the integrated radiance. Default 1. */
+  gain?: number;
+}
+
+export type Layer = Layer2D | Layer25D | Solid3D | Field4D | GridLayer | EmissionLayer;
 
 /** March policy.
  *  'sphere': adaptive sphere tracing, t_{k+1} = t_k + f(o + t_k d) (default).
@@ -437,6 +465,52 @@ function terrainLayerHit(
   };
 }
 
+/**
+ * Integrated emission of one emission layer along a ray segment
+ * [0, tMax]: midpoint quadrature on the field module's shared policy
+ * (emissionQuadrature), so the compositor and integrateEmission read
+ * the same nodes. Radiance = gain * integral of emission(p) tinted
+ * per sample. Sample count is added to stats.evals when supplied.
+ */
+function emissionGlow(
+  layer: EmissionLayer,
+  ray: Ray,
+  tMax: number,
+  stats?: MarchStats,
+): Vec3 {
+  const { step, samples } = emissionQuadrature(layer.field, tMax);
+  if (samples === 0) return [0, 0, 0];
+  if (stats) stats.evals += samples;
+  const gain = layer.gain ?? 1;
+  const tint: Vec3 = layer.tint ?? [1, 1, 1];
+  const acc: Vec3 = [0, 0, 0];
+  for (let i = 0; i < samples; i++) {
+    const p = at(ray, (i + 0.5) * step);
+    const e = layer.field.emissionAt(p);
+    if (e === 0) continue;
+    const w = e * step * gain;
+    const c = layer.colorAt ? layer.colorAt(p) : tint;
+    acc[0] += w * c[0];
+    acc[1] += w * c[1];
+    acc[2] += w * c[2];
+  }
+  return acc;
+}
+
+function intersectEmissionLayer(
+  layer: EmissionLayer,
+  ray: Ray,
+  index: number,
+  opts: MarchOpts,
+): LayerHit {
+  // Volumetric layers never win depth: standing alone, the hit is the
+  // glow integrated to maxDist, reported at depth Infinity (no
+  // surface). In marchScene the same integral, bounded by the
+  // nearest surface, is added onto that surface's hit instead.
+  const color = emissionGlow(layer, ray, opts.maxDist ?? MARCH_MAX_DIST, opts.stats);
+  return { depth: Infinity, color, kind: 'emission', layer: index };
+}
+
 /** One evaluation pass over every layer; the nearest hit wins. */
 export function intersectLayer(
   layer: Layer,
@@ -457,10 +531,24 @@ export function intersectLayer(
     case 'grid':
       if (opts.stats) opts.stats.evals++;
       return intersectGridLayer(layer, ray, index, opts);
+    case 'emission':
+      return intersectEmissionLayer(layer, ray, index, opts);
   }
 }
 
-/** Composite a full layer stack in depth order. Occlusion falls out of the march. */
+/**
+ * Composite a full layer stack in depth order. Occlusion falls out of the march.
+ *
+ * Emission layers are volumetric, so they composite differently: the
+ * nearest surface hit is found as usual, then each emission layer's
+ * radiance is integrated along the ray only as far as that surface
+ * (emission behind the nearest surface is occluded) and added to the
+ * hit color. With no surface hit, a nonzero total glow returns as a
+ * hit of kind 'emission' at depth Infinity; zero total glow returns
+ * the clean miss, so a zero-intensity emission layer leaves every
+ * hit bit-identical, and a stack with no emission layer runs the
+ * original path untouched.
+ */
 export function marchScene(
   layers: Layer[],
   ray: Ray,
@@ -468,11 +556,36 @@ export function marchScene(
   opts: MarchOpts = {},
 ): LayerHit {
   let best: LayerHit = MISS;
+  const glowLayers: Array<{ layer: EmissionLayer; index: number }> = [];
   for (let i = 0; i < layers.length; i++) {
-    const h = intersectLayer(layers[i], ray, camPos, i, opts);
+    const l = layers[i];
+    if (l.kind === 'emission') {
+      glowLayers.push({ layer: l, index: i });
+      continue;
+    }
+    const h = intersectLayer(l, ray, camPos, i, opts);
     if (h.depth < best.depth) best = h;
   }
-  return best;
+  if (glowLayers.length === 0) return best;
+  const maxDist = opts.maxDist ?? MARCH_MAX_DIST;
+  const tEnd = Math.min(best.depth, maxDist);
+  const glow: Vec3 = [0, 0, 0];
+  for (const g of glowLayers) {
+    const c = emissionGlow(g.layer, ray, tEnd, opts.stats);
+    glow[0] += c[0];
+    glow[1] += c[1];
+    glow[2] += c[2];
+  }
+  if (best.depth === Infinity) {
+    if (glow[0] === 0 && glow[1] === 0 && glow[2] === 0) return MISS;
+    return { depth: Infinity, color: glow, kind: 'emission', layer: glowLayers[0].index };
+  }
+  return {
+    depth: best.depth,
+    color: [best.color[0] + glow[0], best.color[1] + glow[1], best.color[2] + glow[2]],
+    kind: best.kind,
+    layer: best.layer,
+  };
 }
 
 // ---------------------------------------------------------------------------

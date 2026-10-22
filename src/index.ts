@@ -71,7 +71,9 @@ export { makeGrid, gridInBounds, gridSolid, gridSet, gridSetHeight, gridHeightAt
 export type { GridWorld, GridOpts, GridHit, GenerateOpts } from './scene/grid.js';
 export { makeGridTerrain, raycastTerrain, marchTerrain } from './scene/terrain-field.js';
 export type { GridTerrainField, TerrainHit, TerrainMarchOpts, TerrainMarchResult } from './scene/terrain-field.js';
-export type { GridLayer, MarchPolicy, MarchStats } from './scene/layers.js';
+export { makeEmissionField, emissionQuadrature, integrateEmission, EMISSION_STEPS_PER_MINOR, EMISSION_MAX_SAMPLES } from './scene/emission-field.js';
+export type { EmissionParams, ResolvedEmissionParams, EmissionCoords, EmissionField, EmissionIntegrateOpts, EmissionQuadrature, EmissionIntegral } from './scene/emission-field.js';
+export type { GridLayer, EmissionLayer, MarchPolicy, MarchStats } from './scene/layers.js';
 export { FrameMarcher, DEFAULT_FRAME_PARAMS } from './render/frame.js';
 export type { FrameParams, Column, Frame, HitHookCtx, ShadeHookCtx, FrameHooks } from './render/frame.js';
 export { rayTelemetry, summarizeFrame } from './render/telemetry.js';

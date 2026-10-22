@@ -3,6 +3,86 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [2.0.8] - Emission field layer (2026-10-22)
+
+Patch release, step 8 of the road to v3.0.0, the last step before
+the v3.0.0 integration. A new analytic field and a new layer kind;
+default worlds are bit-identical (no existing layer changes
+behavior, and a zero-intensity emission layer is pinned to leave a
+scene's hits exactly unchanged). No demo change: the demo renders
+the SDF node tree through its own GLSL path, and a volumetric
+emission pass in that shader is a project of its own; the demo is
+untouched and the ship gate's playthrough step is not triggered.
+
+**What.** `src/scene/emission-field.ts`: an emission field on
+tokamak geometry. Space is organized about a core circle of major
+radius R with tube minor radius r; the emission is the peaked
+profile I0 * (1 - rho^2)^alpha over the normalized minor radius
+rho (bright on the core circle, zero at and beyond the boundary),
+with toroidal variation (integer mode, amplitude, phase) and
+poloidal variation (amplitude, phase) as explicit multiplicative
+parameters. The field samples analytically at any point
+(`emissionAt`, `coordsAt`, `profileAt`), carries an exact distance
+story (`distAt` is the torus signed distance, the same closed form
+as the sdf library's torus node; `contains` is its sign), and a
+deterministic line integral (`integrateEmission` on the shared
+`emissionQuadrature` policy). `src/scene/layers.ts` gains
+`EmissionLayer` (`kind: 'emission'`): marchScene integrates each
+emission layer's radiance along the ray as far as the nearest
+surface and adds it to that hit's color (per-sample tint via the
+usual color callback, or a constant tint, times gain); standing
+alone, a nonzero glow returns as a hit of kind 'emission' at
+depth Infinity. Every parameter is validated at construction and
+invalid configurations throw (sign-flipped or non-positive radii,
+r >= R, a non-positive exponent, negative intensity, amplitudes
+outside [0, 1], a fractional toroidal mode, non-finite values).
+
+**Why.** Worlds need light that comes from somewhere in the
+geometry, not from a shading trick: a first-class emission field
+other systems can sample, march, and integrate against. Tokamak
+geometry is the owner's chosen organization for it, and it is the
+honest one for a peaked emissivity: the profile is a function of
+one scalar (rho), the symmetry is exact, and the distance story
+is the torus SDF the engine already trusts. Building it as a
+field in the terrain-field mold, rather than a renderer feature,
+means marching, materials, and tooling all consume the same
+analytic object.
+
+**Measured** (test/emission-field.test.ts, 16 tests, all pinned):
+closed-form agreement to 1e-12 on a constructed (rho, theta, phi)
+grid spanning core, mid-radius, boundary, and exterior (exterior
+exactly zero); strict monotone falloff in rho and the axis maximum
+at exactly I0; boundary continuity (value at rho = 1 - 1e-6 below
+2.5 * (2.1e-6)^2 for alpha = 2, exactly zero at exactly
+constructed boundary points); construction angles recovered to
+1e-12; toroidal period rotation (2 pi / n) leaves the field
+unchanged to 1e-12 while a half-period rotation moves it by the
+closed-form phase shift; distAt equal to the sdf torus node to
+1e-12 on a 343-point grid and 1-Lipschitz over 2000 deterministic
+pairs; the analytic chord integral I0 * r * 16/15 matched within
+5e-3 at the default quadrature and 1e-5 at 512 samples per minor
+radius; a Solid3D layer over distAt sphere-traces to the analytic
+depth 10 - sqrt(7) within 3e-3; occluded glow in marchScene
+matches a 4096-per-minor fine reference to 2 percent.
+
+**Negative controls.** Sixteen invalid parameter sets throw,
+including the sign-flip variants (negative radii, negative
+exponent). A zero-intensity field samples exactly zero at 200
+probe points and integrates to exactly zero, proving the nonzero
+field comes from the profile and not a bias term; in a scene it
+leaves all 25 fanned hits bit-identical. The quadrature tiles the
+segment exactly, a property the occlusion test caught during
+development (an early policy sampled past the segment end and
+leaked glow from behind the occluder).
+
+**Honest limits.** The emission intensity is not a distance and
+no Lipschitz property is claimed for it; only distAt carries the
+distance guarantee. The poloidal angle is singular on the core
+circle: emission on the exact axis uses the phi = 0 convention
+(pinned), and with a poloidal amplitude set, values near the
+axis vary with approach angle. The field is static. The demo is
+untouched, per above.
+
 ## [2.0.7] - Cross-language tick parity (2026-10-22)
 
 Patch release, step 7 of the road to v3.0.0. One fixed simulation
