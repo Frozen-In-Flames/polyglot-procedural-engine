@@ -3,6 +3,72 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [2.0.5] - XPBD contact solver (2026-10-22)
+
+Patch release, step 5 of the road to v3.0.0. Contact becomes a
+real solver instead of a set of one-shot corrections. No demo
+change: the demo does not consume collide.ts, and it is untouched.
+
+**What.** New `stepSpheres` / `stepSphereSdf` drivers in
+`src/physics/collide.ts` implement the full XPBD loop (Muller et
+al., "Detailed Rigid Body Simulation with XPBD", 2020): substeps,
+per-substep Lagrange multiplier accumulation across constraint
+iterations, compliance `alpha`, and a velocity pass carrying
+restitution (with a rest threshold) and Coulomb friction that acts
+at the contact point and couples to spin. Sphere-vs-SDF and
+sphere-vs-sphere contacts share the path. Two additions beyond the
+paper's base loop, both measured below: `contactDamping`, a
+Kelvin-Voigt dissipation applied per substep on contacts whose
+restitution branch did not fire, and per-step statistics
+(pre-solve and post-solve penetration). The legacy impulse path
+stays available verbatim behind `{ solver: 'impulse' }` for a
+single sphere vs an SDF; every pre-existing collide export keeps
+its exact behavior. Full write-up in docs/xpbd-contact.md.
+
+**Why.** The old contact code was three honest primitives and no
+solver: a velocity impulse, a one-shot positional projection whose
+lambda reset every call (its own comment admitted it), and a 1D
+drop demo held together by a sleeping threshold. Nothing composed
+them, so nothing could promise resting stability, a physical
+compliance, or pair collisions. XPBD is the formulation that
+promises all three in one set of equations: position-level
+constraints with a compliance that means the same thing at any
+step rate, substeps doing the convergence work, and velocities
+derived from solved positions, which is why resting contact needs
+no sleep hack here. The measured pins are the promise kept or the
+release does not ship.
+
+**Measured pins.** Static deflection equals the spring oracle
+`alpha * m * |g|` to a relative error of 5e-9 or better across
+alpha in {1e-4, 1e-3} and m in {1, 4}, and the analytic rest state
+is an exact fixed point of the undamped solver. Rigid rest over
+60 s: zero drift, zero residual speed. Penetration: post-solve 0
+on a plane across a 27-cell drop battery plus a spherical
+container; the deepest penetration the solver must resolve stays
+under 1.6x one substep of impact motion in every cell, and at the
+same outer step the impulse path resolves 2.87e-2 m where XPBD at
+10 substeps resolves 6.33e-3 m (4.5x). An e = 1 bounce apex
+converges to the analytic height as substeps refine (error
+6.12e-2 at 1 substep, 2.2e-4 at 64) and holds flat across
+compliance (about 3e-3 at alpha up to 3e-3), so the spring returns
+the impact energy; e = 0 dissipates exactly the fall energy.
+Two-sphere collisions match the elastic formulas to about 1e-13,
+with momentum and kinetic energy conserved at e = 1. Friction
+transitions a sliding sphere to rolling at (5/7) v0 with 2e-5
+error. Trajectories are bit-identical across repeated runs.
+Negative controls: sign-flipped gravity leaves ballistically and
+never settles; dropping lambda accumulation degenerates the solve
+to classic PBD and the settled deflection misses the oracle by
+1.7e-2 (about 8x too stiff at 8 iterations) against the
+accumulated solve's 6e-14, which is the multiplier term's reason
+to exist, measured. One defect found and documented rather than
+silently fixed: the legacy impulse friction is rotation-blind (it
+never touches w and sizes the tangential impulse with the full
+mass, not the contact-point effective mass), pinned verbatim in
+the suite; the XPBD rolling result is the fix. Suite: 593/593
+green (577 + 16 new), including the GLSL contract tests. Zero new
+runtime dependencies.
+
 ## [2.0.4] - Wald basin re-map on harder scenes (2026-10-22)
 
 Patch release, step 4 of the road to v3.0.0. The change detector's
