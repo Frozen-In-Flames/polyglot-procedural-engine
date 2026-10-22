@@ -39,7 +39,8 @@ export type DetectForm = 'score-gm' | 'score-huber' | 'wald';
 export interface DetectOpts {
   /** Which form to use (default DEFAULT_FORM). */
   form?: DetectForm;
-  /** GM tuning constant for form 'score-gm' and the Wald fit (default 3.0). */
+  /** GM tuning constant for the score forms (default 3.0). The Wald form
+   *  uses WALD_GM_C (1.2) when this is not set; see waldDetect. */
   c?: number;
   /** Huber knee for form 'score-huber' detection weights (default 1.345). */
   huberK?: number;
@@ -49,6 +50,14 @@ export interface DetectOpts {
   waldMaxIt?: number;
   /** IRLS tolerance for the Wald form (default 1e-5). */
   waldTol?: number;
+  /**
+   * Wald covariance form (default 'sandwich'). 'naive' uses V = H^{-1}
+   * instead of the sandwich H^{-1} M H^{-1}; it exists only as the
+   * control the sandwich is measured against (it miscalibrates under
+   * contamination, see docs/change-detection.md and
+   * test/wald-basin.test.ts). Never a production setting.
+   */
+  covariance?: 'sandwich' | 'naive';
 }
 
 export interface DetectResult {
@@ -190,6 +199,20 @@ export function scoreDetect(
 }
 
 /**
+ * GM tuning constant for the Wald form's fit and sandwich (v2.0.4).
+ * The v1.9.1 bake-off set c = 3.0 for every form; the harder-scene
+ * basin re-map (test/wald-basin.test.ts, docs/change-detection.md)
+ * found that at c = 3.0 the Wald fit roams into the dirt basin under
+ * combined strong specular + 40% one-sided clutter (false alarms 52%
+ * at the nominal 1% operating point) and is blind below ~0.3 rad.
+ * At c = 1.2 the same map holds nominal false alarms in every regime
+ * (worst cell 2/100 on held-out seeds) and the 90% detection boundary
+ * moves from 0.3 to 0.2 rad. The score forms keep c = 3.0: their
+ * tuning is the owner's oracle contract, and they are not the default.
+ */
+export const WALD_GM_C = 1.2;
+
+/**
  * Wald test at the robust solution: fit GM IRLS from the warm start, then
  * T = dtheta^T V^{-1} dtheta with dtheta = thetaSol - thetaPred and the
  * sandwich V = H^{-1} M H^{-1}, M = sum psi(u)^2 J J^T the score covariance
@@ -204,7 +227,7 @@ export function waldDetect(
   sigma2: number,
   opts?: DetectOpts,
 ): DetectResult {
-  const c = opts?.c ?? 3.0;
+  const c = opts?.c ?? WALD_GM_C;
   const p = thetaPred.length;
   const fit = irlsGnFit(y, thetaPred, R, J, {
     kind: 'gm',
@@ -242,8 +265,10 @@ export function waldDetect(
   }
   // V = H^{-1} M H^{-1} (congruence preserves positive semidefiniteness;
   // pdSafe repairs rounding asymmetry with a scale-relative ridge).
+  // The 'naive' control skips the meat: V = H^{-1}.
   const Hinv = invertSPD(pdSafe(H));
-  const V = matMul(matMul(Hinv, M), Hinv);
+  const V =
+    opts?.covariance === 'naive' ? Hinv : matMul(matMul(Hinv, M), Hinv);
   const Vinv = invertSPD(pdSafe(V));
   const VinvD = Vinv.map((row) => row.reduce((t, v, b) => t + v * dth[b], 0));
   let T = 0;

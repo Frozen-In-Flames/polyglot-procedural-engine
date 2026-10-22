@@ -588,6 +588,7 @@ export {
   waldDetect,
   chi2isf99,
   DEFAULT_FORM,
+  WALD_GM_C,
 } from './changedetect.js';
 export type { DetectForm, DetectOpts, DetectResult } from './changedetect.js';
 

@@ -3,6 +3,70 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [2.0.4] - Wald basin re-map on harder scenes (2026-10-22)
+
+Patch release, step 4 of the road to v3.0.0. The change detector's
+operating basin, mapped on scenes harder than the v1.9.1 bake-off
+used, with one configuration fix the map indicted. No demo change:
+nothing user-facing moved, and the demo is untouched.
+
+**What.** New `test/wald-basin.test.ts` (7 tests) extends the
+v1.9.1 scene generator with a specular lobe exponent and a clutter
+mode knob (one-sided offsets at fixed density and magnitude, in
+place of the legacy value replacement), then measures the default
+Wald detector on 8 regimes x jump magnitudes 0.05 to 0.8 rad
+(1.6 in three regimes): 100 seeded no-change trials per regime for
+false alarms at the chi2 99% operating point, 40 trials per power
+cell. In `src/inverse/changedetect.ts`: the Wald form's GM constant
+is now `WALD_GM_C = 1.2` for its fit and its sandwich (score forms
+keep c = 3.0; explicit `opts.c` still overrides all forms), and a
+`covariance: 'naive'` option exists solely as the sandwich's
+negative control. Full write-up in docs/change-detection.md.
+
+**Why.** The v1.9.1 doc named the debt in its own limits: Wald
+inherits the estimator's basin, so map it again on harder scenes.
+The map found the failure the sentence predicted, in a new place.
+At the v1.9.1 tuning, combined specular 1.5 + 40% one-sided bright
+clutter false-alarms 52% (31/60) at the nominal 1% operating point:
+the GM fit roams into a second basin that fits the dirt plateau
+(dAz up to 0.73 rad, test statistic up to 10^3), and neither factor
+breaks it alone. At c = 1.2 the dirt pixels lose their early pull
+on the fit (GM weight at u = 3 falls about thirteenfold), the fit
+stays home under the null, and the hole closes. The same map,
+post-fix: false alarms 0/100 in seven regimes and 3/100 in the
+worst (binomial bound 5/100), 2/100 on held-out seeds, and the 90%
+detection boundary moves from 0.3 to 0.2 rad in every regime,
+because the looser constant was also diluting the signal's own
+moderate residuals (clean 0.2 rad power: 50% at c = 3.0, 100% at
+c = 1.2). Power never falls out to 1.6 rad: no warm-start trapping
+anywhere on the map.
+
+**Measured pins.** Negative controls: the naive covariance
+(V = H^-1, no sandwich) collapses to 25% power at 0.3 rad on all
+three asymmetric-clutter regimes against the sandwich's 100%, at
+unchanged false alarms, which is the sandwich's reason to exist
+measured instead of asserted. Sign-flipped jumps detect at 100%
+wherever positive ones do (the statistic is quadratic, magnitude
+based). One control does not behave as the generic template
+expects, and the release says so plainly: permuting the residuals
+does not collapse Wald detection (shuffled changes still alarm
+23-37 of 40 at 0.3 rad while shuffled nulls stay at 0 of 40),
+because permutation preserves the residual marginals and the
+Jacobian columns have nonzero spatial means, so marginal skew
+projects coherently onto the parameters. It is pinned as a measured
+exception in the test and a limit in the doc, not silently dropped.
+Suite: 577/577 green (570 + 7 new), including the GLSL contract
+tests; the v1.9.1 bake-off assertions pass unchanged at the new
+tuning. Zero new runtime dependencies.
+
+**Back-compat.** `detectChange` callers that pass no `c` get the
+Wald form at the new constant; that is the fix, and it is the only
+behavior change. Score forms, thresholds, the dof convention, and
+every other module are untouched, as are default worlds and the
+demo. The pre-fix behavior stays reachable and pinned: pass
+`{ c: 3.0 }` and the combined-dirt hole reproduces at 31/60 in the
+test suite.
+
 ## [2.0.3] - Terrain distance field (2026-10-22)
 
 Patch release, step 3 of the road to v3.0.0. Grid worlds gain a terrain
