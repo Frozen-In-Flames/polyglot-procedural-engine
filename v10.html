@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Polyglot Procedural Engine demo v2.0.0 - math-first, zero asset dependence</title>
+    <title>V10 Math-First MVP - Polyglot Procedural Engine demo</title>
     <style>
       html, body { margin: 0; height: 100%; overflow: hidden; background: #05070d; font-family: system-ui, sans-serif; }
       #app { position: fixed; inset: 0; }
@@ -53,23 +53,6 @@
         white-space: nowrap; max-width: 94vw; overflow: hidden; text-overflow: ellipsis;
       }
       #hud a { color: #67e8f9; font-size: 11px; }
-      #frame-view, #grid-map { width: 100%; border: 1px solid #1e293b; border-radius: 8px; display: block; background: #0b1220; }
-      #grid-map { margin-top: 8px; }
-      .fx-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; font-size: 11px; }
-      .fx-row button {
-        background: #0e7490; color: #fff; border: none; border-radius: 8px;
-        padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer;
-      }
-      .fx-row select { background: #0b1220; color: #e2e8f0; border: 1px solid #1e293b; border-radius: 6px; padding: 4px; font-size: 11px; }
-      #fx-seed { color: #67e8f9; font-weight: 700; }
-      .fx-dial { margin-top: 6px; font-size: 11px; color: #94a3b8; }
-      .fx-dial label { display: flex; justify-content: space-between; }
-      .fx-dial label span { color: #67e8f9; font-weight: 700; }
-      .fx-dial input { width: 100%; }
-      #fx-note { font-size: 10.5px; color: #94a3b8; line-height: 1.5; margin: 8px 0 0; }
-      #telemetry { list-style: none; margin: 8px 0 0; padding: 0; font-size: 11px; }
-      #telemetry li { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; border-top: 1px solid #1e293b; }
-      #telemetry li span:last-child { color: #67e8f9; font-weight: 700; text-align: right; }
       .panel-close {
         position: absolute; top: 6px; right: 6px; width: 44px; height: 44px;
         display: flex; align-items: center; justify-content: center;
@@ -86,21 +69,22 @@
         font: 700 13px system-ui, sans-serif; cursor: pointer;
       }
     </style>
-    <script type="module" crossorigin src="./assets/v10-BPYoN9o8.js"></script>
+    <script type="module" crossorigin src="./assets/v10-bdYxsuYj.js"></script>
     <link rel="modulepreload" crossorigin href="./assets/semantic-DrEJTg_R.js">
+    <link rel="modulepreload" crossorigin href="./assets/raymarch-DOQ47QpX.js">
   </head>
   <body>
     <div id="app"><canvas id="scene"></canvas></div>
     <div id="crosshair"><span>solve target: brighten this region</span></div>
     <div id="hud" class="panel">
       <button class="panel-close" type="button" aria-label="Close panel">✕</button>
-      <h1>POLYGLOT PROCEDURAL ENGINE<span id="ver">v2.0.0</span></h1>
+      <h1>V10 MATH-FIRST MVP<span id="ver">v1.0.0</span></h1>
       <p><span class="zero">zero asset dependence:</span> every pixel is math.</p>
       <ul id="pipeline">
-        <li><span>World</span><span>SDF primitives + seeded grid worlds</span></li>
-        <li><span>Render</span><span>sphere tracing or fixed-step, depth+normal</span></li>
-        <li><span>Layers</span><span>grid, 2D, 2.5D, 3D, 4D in one march</span></li>
-        <li><span>Inverse</span><span>robust Gauss-Newton (GM) fits</span></li>
+        <li><span>World</span><span>4 SDF primitives + exp smin</span></li>
+        <li><span>Render</span><span>sphere tracing, depth+normal</span></li>
+        <li><span>Shading</span><span>Lambert dot(n, l)</span></li>
+        <li><span>Inverse</span><span>finite-difference gradient descent</span></li>
         <li><span>Camera</span><span>V9 unified input rig</span></li>
       </ul>
       <div id="btns">
@@ -117,37 +101,8 @@
       <div id="deck"></div>
       <h2 style="margin-top:10px">Solver log</h2>
       <pre id="solve-log">no solve run yet. Press "Solve: make region brighter".</pre>
-      <h2 style="margin-top:12px">v2.0.0 Dev Flexibility</h2>
-      <p style="font-size:11px;color:#94a3b8;margin:0 0 8px">A seeded grid world and an SDF sphere, composited by one march into a live column view. The same camera rig drives both views, so every input scheme moves this view too.</p>
-      <canvas id="frame-view" width="272" height="150"></canvas>
-      <canvas id="grid-map" width="272" height="272"></canvas>
-      <div class="fx-row">
-        <span>world seed <span id="fx-seed"></span></span>
-        <button id="fx-regen">Regenerate world</button>
-      </div>
-      <div class="fx-row">
-        <label for="fx-policy">march policy</label>
-        <select id="fx-policy">
-          <option value="sphere">sphere tracing (adaptive)</option>
-          <option value="fixed">fixed-step</option>
-        </select>
-      </div>
-      <p id="fx-note">Measured on the v2.0.0 reference fan (unit sphere at distance 5, 16 rays): fixed-step at step 0.1 has max distance error 0.0984, inside its guaranteed one-step bound; sphere tracing has max error 0.00214. Fixed-step can tunnel through features thinner than the step. Grid layers are exact under either policy; the policy moves the SDF sphere.</p>
-      <div class="fx-dial"><label>columns <span id="fx-columns-v"></span></label><input id="fx-columns" type="range" min="16" max="240" step="1" value="90"></div>
-      <div class="fx-dial"><label>march steps <span id="fx-steps-v"></span></label><input id="fx-steps" type="range" min="16" max="256" step="1" value="128"></div>
-      <div class="fx-dial"><label>field of view <span id="fx-fov-v"></span></label><input id="fx-fov" type="range" min="25" max="120" step="1" value="60"></div>
-      <div class="fx-dial"><label>max distance <span id="fx-maxdist-v"></span></label><input id="fx-maxdist" type="range" min="5" max="100" step="1" value="40"></div>
-      <div class="fx-dial"><label>fixed step (fixed policy) <span id="fx-fixedstep-v"></span></label><input id="fx-fixedstep" type="range" min="0.05" max="0.5" step="0.05" value="0.1"></div>
-      <h2 style="margin-top:10px">March telemetry</h2>
-      <ul id="telemetry">
-        <li><span>march steps</span><span id="tele-steps">0</span></li>
-        <li><span>field evaluations</span><span id="tele-evals">0</span></li>
-        <li><span>hits / rays</span><span id="tele-hits">0</span></li>
-        <li><span>mean hit distance</span><span id="tele-mean">n/a</span></li>
-        <li><span>march time (ms)</span><span id="tele-ms">0</span></li>
-      </ul>
     </div>
-    <div id="hint">Math-first engine: SDF world, raymarch, Lambert, inverse solve, plus the v2.0.0 dev flexibility panel. Select input: <select id="input-scheme"><option value="desktop">desktop</option><option value="touch">touch</option></select></div>
+    <div id="hint">V10 acceptance recipe: SDF world, raymarch, Lambert, inverse solve. Select input: <select id="input-scheme"><option value="desktop">desktop</option><option value="touch">touch</option></select></div>
     <button id="menu-open" type="button">☰ Menu</button>
     <script>
       (function () {
