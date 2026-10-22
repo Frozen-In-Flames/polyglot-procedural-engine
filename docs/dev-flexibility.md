@@ -62,13 +62,41 @@ a hard rule: a world with no `heights`, or with every solid cell at the
 world height, runs the original v2.0.0 code path and produces
 bit-identical results, verified by a ray battery against a plain twin.
 
+**Terrain distance field (v2.0.3).** The same per-cell heights also
+read as a smooth heightfield terrain. `makeGridTerrain(grid)` (in
+`src/scene/terrain-field.ts`) places one node at each cell center
+(solid: its height; open: 0), interpolates bilinearly between centers,
+and extends the edge value constantly beyond the outermost centers.
+Its `distAt(p)` is a true conservative distance to that surface:
+the vertical gap divided by `sqrt(1 + S^2)`, with S the maximum of the
+proven per-patch bilinear slope bound `sqrt(mx^2 + mz^2)` over the
+field (the refinement of the `sqrt(2) m` bound in
+`src/geo/terrain-dist.ts`). `raycastTerrain` intersects a ray with
+the surface analytically (per-patch quadratic); `marchTerrain`
+sphere-traces the field with steps that can approach but never cross
+the surface. `MarchOpts.policy: 'terrain'` routes grid layers through
+the marcher; the DDA remains the wall-exact path. Measured on the
+pinned generated world (seed 777, S = 5.66): over a 41-ray fan the
+terrain policy spends 1453 steps for 41 hits, sphere tracing over the
+exact box distance spends 674 for 23 hits, and fixed steps at 0.1
+spend 19163 for the same 23; each terrain step is one bilinear patch
+evaluation, against a full 256-cell scan per box-distance evaluation.
+Honest limits: the surface is a smoothed reading of the stepped world
+(at y = 2.5 the pinned step ray returns 2.5 from the DDA and 2.75
+from the terrain surface), S is one global bound so a single steep
+cell shrinks steps field-wide, and grazing rays on steep faces can
+need large step budgets even though they never overshoot.
+
 ## 2. March policy as a choice
 
 **What.** `MarchOpts.policy`: `'sphere'` (default) is the existing
 adaptive sphere tracing, `t_{k+1} = t_k + f(o + t_k d)`. `'fixed'` marches
 in fixed steps of `MarchOpts.fixedStep`, first sample inside the surface
-wins. The policy applies to SDF (3d/4d) layers; analytic layers (2d, 2.5d,
-grid) are exact under either policy.
+wins. `'terrain'` (v2.0.3) marches grid layers over the terrain distance
+field (see feature 1) instead of the exact DDA; SDF layers sphere-trace
+as under `'sphere'`. The policy applies per scene; analytic layers (2d,
+2.5d) are exact under every policy, and grid layers are exact under
+`'sphere'` and `'fixed'`.
 
 **Why.** Sphere tracing is exact but its cost varies with the field.
 Fixed-step marching has a flat, predictable cost and a deliberate retro
@@ -241,6 +269,8 @@ function over an input table twice demanding bit-identical outputs.
   (see feature 2); sphere tracing stays the default.
 - Grid walls are vertical cell boxes: since v2.0.2 each cell carries its
   own height, but there are no slopes, overhangs, or roofs within a
-  cell; a cell is open or solid at one height.
+  cell; a cell is open or solid at one height. The v2.0.3 terrain field
+  reads the same heights as a smooth surface for marching and queries,
+  but the boxes remain the exact geometry.
 - Telemetry cost counts field evaluations, not wall-clock time; it is the
   cost-model unit, comparable across scenes and ports, not a profiler.

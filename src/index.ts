@@ -68,6 +68,8 @@ export * from './render/temporal.js';
 export * from './audio/acoustics.js';
 export { makeGrid, gridInBounds, gridSolid, gridSet, gridSetHeight, gridHeightAt, gridDistance, raycastGrid, generateGrid, GridLevel } from './scene/grid.js';
 export type { GridWorld, GridOpts, GridHit, GenerateOpts } from './scene/grid.js';
+export { makeGridTerrain, raycastTerrain, marchTerrain } from './scene/terrain-field.js';
+export type { GridTerrainField, TerrainHit, TerrainMarchOpts, TerrainMarchResult } from './scene/terrain-field.js';
 export type { GridLayer, MarchPolicy, MarchStats } from './scene/layers.js';
 export { FrameMarcher, DEFAULT_FRAME_PARAMS } from './render/frame.js';
 export type { FrameParams, Column, Frame, HitHookCtx, ShadeHookCtx, FrameHooks } from './render/frame.js';

@@ -3,6 +3,76 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [2.0.3] - Terrain distance field (2026-10-22)
+
+Patch release, step 3 of the road to v3.0.0. Grid worlds gain a terrain
+reading: the per-cell heights as a smooth surface with a true distance
+field, and a march policy that sphere-traces it.
+
+**What.** New `src/scene/terrain-field.ts`. `makeGridTerrain(grid)`
+builds a `GridTerrainField` over a grid world: one node at each cell
+center (a solid cell contributes its per-cell height, an open cell 0),
+bilinear between centers, constant extension beyond the outermost
+centers. The field answers `heightAt`, `gradientAt`,
+`patchSlopeBoundAt`, `nodeHeightAt`, and `distAt`: the conservative
+signed distance `gap / sqrt(1 + S^2)`, where S is the maximum over all
+patches of the proven per-patch bilinear slope bound
+`sqrt(mx^2 + mz^2)` (a refinement of the `sqrt(2) m` form in
+`src/geo/terrain-dist.ts`; derivation in the module header, pinned
+against dense gradient sampling). `raycastTerrain` is the analytic
+raycast against the surface (per-patch quadratic root; machine-precision
+agreement with a brute-force gap scan). `marchTerrain` sphere-traces
+the field. `MarchOpts.policy` gains `'terrain'`: grid layers march the
+field instead of the DDA; SDF layers sphere-trace as before; 2d and
+2.5d layers are untouched. The new API rides the package root.
+
+**Why.** v2.0.2 gave every cell its own height, but the only ways to
+march a heights world were the exact box DDA (stepped faces, no smooth
+surface to step against) and fixed steps. Terrain needs a distance
+field: a step-size oracle that is provably safe on slopes. The vertical
+gap alone is not one (negative control: on a slope-3 plane, a raw-gap
+march's first step lands at t = 5, deep inside a surface whose true
+crossing is at 1.77). Dividing the gap by `sqrt(1 + S^2)` with a proven
+slope bound is what makes the step a distance bound, so the march can
+approach the surface but never cross it.
+
+**Measured pins** (test/terrain-field.test.ts, 15 new tests). Flat and
+constant-slope fields are exact to 1e-12, in both the distance and S.
+On the pinned generated world (seed 777, S = 5.66): a 60-ray battery
+against `raycastTerrain` never overshoots (worst stop 0.0133 short of
+the analytic hit, inside the eps band; average 48.8 steps, max 586 on
+one grazing ray). On a 41-ray fan through `marchScene`: terrain policy
+1453 steps and 41 hits, sphere over the exact box distance
+(`gridDistance`) 674 steps and 23 hits, fixed at 0.1 19163 steps and
+23 hits; on the 23 rays all three hit, the totals are terrain 789,
+sphere 312, fixed 1145. Each terrain step costs one bilinear patch
+evaluation, against `gridDistance`'s full 256-cell scan per evaluation
+on this world. Negative controls: the raw-gap march tunnels on the
+steep plane (above), a sign-flipped field false-hits at t = 0, and the
+un-divided gap violates conservativeness next to cliffs in the
+dense-sampling test, so the bound is load-bearing. One real defect was
+caught and fixed during the build: `gradientAt` returned the interior
+patch's edge gradient inside the constant-extension strips, where the
+true gradient component is zero; it is pinned by a dedicated strip
+test. Suite: 570/570 green.
+
+**Back-compat.** Default worlds and the default policy are
+bit-identical to v2.0.2: `'terrain'` is opt-in per `marchScene` call,
+grid layers under `'sphere'` and `'fixed'` take the exact DDA as
+before (pinned against the v2.0.2 step case), and no existing API
+changed shape. The shipped demo does not surface the new policy and is
+untouched.
+
+**Honest limits.** The terrain surface is a smoothed reading of the
+stepped world, not the box geometry: on the pinned step ray at y = 2.5
+the DDA returns 2.5 (the vertical face) and the terrain surface
+returns 2.75 (where the ramp crosses); use the DDA for wall-exact
+queries. S is a single global bound, so one steep cell shrinks steps
+field-wide, and grazing rays against steep faces can need large step
+budgets (the 586-step ray above) even though they never overshoot.
+The field extends constantly beyond the outermost centers without
+bound; maxDist is what fences a terrain ray's search.
+
 ## [2.0.2] - Per-cell grid heights (2026-10-20)
 
 Patch release, step 2 of the road to v3.0.0. Grid worlds lose their one

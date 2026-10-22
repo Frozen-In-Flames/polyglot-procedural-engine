@@ -22,6 +22,7 @@ import type { CharacterState } from '../game/character.js';
 import { finiteJacobian } from '../inverse/conditioning.js';
 import { irlsGnFit } from '../inverse/robust.js';
 import { raycastGrid, type GridWorld } from './grid.js';
+import { makeGridTerrain, marchTerrain } from './terrain-field.js';
 
 export type DimKind = '2d' | '2.5d' | '3d' | '4d' | 'grid';
 
@@ -91,14 +92,25 @@ export interface GridLayer {
 
 export type Layer = Layer2D | Layer25D | Solid3D | Field4D | GridLayer;
 
-/** March policy for SDF layers.
+/** March policy.
  *  'sphere': adaptive sphere tracing, t_{k+1} = t_k + f(o + t_k d) (default).
  *  'fixed': fixed-step marching, samples at multiples of fixedStep; the
  *  first sample inside the surface wins. Distance error is bounded by one
  *  step (measured and pinned: see docs/dev-flexibility.md), and features
  *  thinner than the step can be tunneled through. Analytic layers (2d,
- *  2.5d, grid) are exact under either policy. */
-export type MarchPolicy = 'sphere' | 'fixed';
+ *  2.5d, grid) are exact under either policy.
+ *  'terrain' (v2.0.3): grid layers march the terrain distance field
+ *  (src/scene/terrain-field.ts) instead of the exact DDA: sphere tracing
+ *  over the smooth bilinear surface the per-cell heights define, with
+ *  provably safe steps. The terrain surface extends constantly beyond
+ *  the outermost cell centers (the field is defined everywhere), so
+ *  maxDist is what bounds a terrain ray's search. SDF layers (3d, 4d)
+ *  sphere-trace as under 'sphere'; 2d and 2.5d layers are unaffected. The terrain surface is
+ *  a smoothed reading of the same world, not the stepped box geometry,
+ *  so terrain hits differ from DDA hits wherever a wall face is steep:
+ *  the policy is for terrain-style rendering and queries, and the DDA
+ *  stays the exact path for walls. */
+export type MarchPolicy = 'sphere' | 'fixed' | 'terrain';
 
 /** Opt-in march instrumentation: when supplied, the march counts its work
  *  here. steps = march iterations; evals = field/content evaluations
@@ -237,6 +249,8 @@ function intersectLayer25D(layer: Layer25D, ray: Ray, camPos: Vec3, index: numbe
  * 'fixed': samples at t = k * fixedStep; the first sample with f < eps is
  * the hit. Error vs the true surface is at most one step along the ray
  * (plus the eps band); features thinner than the step can be missed.
+ * 'terrain' behaves as 'sphere' for field layers; it only changes how
+ * grid layers intersect (see intersectGridLayerTerrain).
  */
 function sphereTrace(
   field: (p: Vec3) => number,
@@ -311,11 +325,56 @@ function intersectField4D(layer: Field4D, ray: Ray, index: number, opts: MarchOp
 }
 
 function intersectGridLayer(layer: GridLayer, ray: Ray, index: number, opts: MarchOpts): LayerHit {
+  if ((opts.policy ?? 'sphere') === 'terrain') {
+    return intersectGridLayerTerrain(layer, ray, index, opts);
+  }
   const hit = raycastGrid(layer.grid, ray.origin, ray.dir, opts.maxDist ?? MARCH_MAX_DIST);
   if (!hit) return MISS;
   return {
     depth: hit.depth,
     color: layer.color(hit.cellX, hit.cellZ, hit.side, hit.point),
+    kind: 'grid',
+    layer: index,
+  };
+}
+
+/**
+ * Terrain-policy grid intersection: sphere-trace the grid's terrain
+ * distance field. The field is rebuilt per call (a snapshot of the
+ * world's node heights and patch bounds), so in-place world edits are
+ * always honored; devs marching many rays against a static world can
+ * call marchTerrain on their own makeGridTerrain snapshot instead.
+ * The color callback receives the cell under the hit point and the
+ * dominant slope axis there as the side.
+ */
+function intersectGridLayerTerrain(
+  layer: GridLayer,
+  ray: Ray,
+  index: number,
+  opts: MarchOpts,
+): LayerHit {
+  const field = makeGridTerrain(layer.grid);
+  const res = marchTerrain(field, ray.origin, ray.dir, opts);
+  if (opts.stats) {
+    opts.stats.steps += res.steps;
+    opts.stats.evals += res.evals;
+  }
+  if (!isFinite(res.depth) || !res.point) return MISS;
+  const g = layer.grid;
+  const cs = g.cellSize;
+  const cellX = Math.min(
+    g.width - 1,
+    Math.max(0, Math.floor((res.point[0] - g.origin[0]) / cs)),
+  );
+  const cellZ = Math.min(
+    g.depth - 1,
+    Math.max(0, Math.floor((res.point[2] - g.origin[2]) / cs)),
+  );
+  const [gx, gz] = field.gradientAt(res.point[0], res.point[2]);
+  const side: 'x' | 'z' = Math.abs(gx) >= Math.abs(gz) ? 'x' : 'z';
+  return {
+    depth: res.depth,
+    color: layer.color(cellX, cellZ, side, res.point),
     kind: 'grid',
     layer: index,
   };
