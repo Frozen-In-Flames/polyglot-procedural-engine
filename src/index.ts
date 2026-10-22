@@ -71,6 +71,8 @@ export { makeGrid, gridInBounds, gridSolid, gridSet, gridSetHeight, gridHeightAt
 export type { GridWorld, GridOpts, GridHit, GenerateOpts } from './scene/grid.js';
 export { makeGridTerrain, raycastTerrain, marchTerrain } from './scene/terrain-field.js';
 export type { GridTerrainField, TerrainHit, TerrainMarchOpts, TerrainMarchResult } from './scene/terrain-field.js';
+export { makeLivingWorld, LIVING_CHARACTER_PARAMS, LIVING_EMISSION_PARAMS, LIVING_EMISSION_TINT, LIVING_WATCH_SIGMA } from './scene/living.js';
+export type { LivingWorld, LivingWorldConfig, LivingView, LivingMarchOpts } from './scene/living.js';
 export { makeEmissionField, emissionQuadrature, integrateEmission, EMISSION_STEPS_PER_MINOR, EMISSION_MAX_SAMPLES } from './scene/emission-field.js';
 export type { EmissionParams, ResolvedEmissionParams, EmissionCoords, EmissionField, EmissionIntegrateOpts, EmissionQuadrature, EmissionIntegral } from './scene/emission-field.js';
 export type { GridLayer, EmissionLayer, MarchPolicy, MarchStats } from './scene/layers.js';

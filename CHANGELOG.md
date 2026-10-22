@@ -3,6 +3,99 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [3.0.0] - Living worlds (2026-10-22)
+
+The integration release that completes the V3 campaign: the
+campaign's systems composed into one seeded world, proven by an
+integration battery, and made visible in a new demo page. No new
+physics, no new fields, no new runtime dependencies; what is new
+is the composition and the evidence that the pieces still tell
+the truth when they share a world.
+
+**What.** `src/scene/living.ts`: `makeLivingWorld({ seed,
+gravity?, emission? })` assembles the whole composition from one
+seed. Terrain: a 28x28 grid of solid cells carrying analytic
+rolling-hills heights, one Gaussian hill, and a flat plaza, as
+the v2.0.3 conservative distance field (measured slope bound
+1.4832 at the canonical seed). Bodies: three spheres dropped on
+the plaza and a two-sphere stack, stepped by the v2.0.5 XPBD
+contact solver against that field (three position iterations per
+substep, because the field's gradient magnitude is
+1 / sqrt(1 + S^2) and one pass closes only that fraction of a
+contact's residual). Heartbeat: the character tick at the
+v2.0.7 parity-pinned 60 Hz, standing grounded on the plaza.
+Emission: the v2.0.8 tokamak ring standing over the hill side, a
+live instance the world owns. Watcher: the v2.0.4 Wald robust
+change detection at its final operating point (GM c = 1.2),
+reading 24 probes (16 on the ring's profile slope, where a moved
+light is loudest; 8 on the core circle, where intensity lives)
+against the nominal light. The world steps as one (`stepTick`)
+and answers composed queries: `march` (terrain by the v2.0.6
+interval guaranteed march or the field policy, bodies and the
+character as analytic spheres, glow integrated up to the nearest
+surface so terrain occludes it), `layers` (the same state as a
+scene-layer assembly), `watch` / `observe`, and `digest` (an
+FNV-1a digest of the full composed state). Demo: `demo/living.html`,
+the composed world marched live on the CPU at adaptive resolution,
+the V9 unified input rig for the camera, Move the light /
+Emission / Reset controls, and a live world-state panel (tick,
+settled count, watcher statistic, digest, render rate).
+
+**Why.** Every campaign step proved one system against its own
+oracle. An engine is the claim that the systems hold together:
+that the field the solver rests on is the field the camera
+marches is the field that occludes the light the watcher watches.
+v3.0.0 makes exactly that claim and grades it end to end, in one
+seeded scenario, with the campaign's own operating points
+unchanged.
+
+**Campaign retrospective.** v2.0.1: the GLSL compile fix and the
+shader contract tests that keep a blank panel from ever shipping
+silent again. v2.0.2: per-cell grid heights, the terrain stopped
+being one global ramp. v2.0.3: the terrain as a conservative
+distance field with a measured slope bound. v2.0.4: the Wald
+basin re-map that found the robust fit's false-alarm hole and
+re-tuned it (GM c = 1.2). v2.0.5: the XPBD contact solver with
+its rigid-rest oracle. v2.0.6: the interval guaranteed march, a
+step size proved against the slope bounds it crosses. v2.0.7:
+cross-language tick parity, the same character tick in TypeScript
+and Python. v2.0.8: the emission field layer, light as geometry
+with an exact distance story.
+
+**Measured** (test/living-world.test.ts, 9 tests, canonical seed
+20261022, all pinned): bodies settle on the field and stay
+settled over 1500 + 600 ticks (rest residuals 4e-7 on the
+singles, 3e-6 under the stack, drift exactly 0); no tunneling
+(worst post-solve penetration 6.7e-4, at the stack impact; the
+resting per-tick value is at the micrometers scale); the marched
+view agrees with the terrain's analytic raycast (24 rays, 0
+overshoots, worst undershoot 5.6e-3 against the 1e-2 band); the
+emission glow is occluded by the terrain (exactly 0 behind the
+hill, magnitude 5.74 in the clear, and the composed march matches
+marchScene over the world's own layers to 1e-15); the watcher
+stays quiet on the unchanged world (0/60 alarms, canonical
+statistic 3.9 vs the 11.34 threshold) and detects a moved light
+(20/20, canonical statistic 29.6); the composed digest is
+bit-identical across repeated runs. Negative controls, failing
+as required: sign-flipped gravity settles nothing and never
+grounds the character; a build-level dark world changes the
+marched colors by exactly the occluded glow and nothing else; an
+interval-march query with an understated slope bound is caught
+by the v2.0.6 bound-violation counter. Full TypeScript suite
+green twice; Python suite 91 OK, unchanged.
+
+**Honest limits.** The character and the bodies share the
+terrain field but do not collide with each other. Bodies are
+spheres only, the v2.0.5 solver's reach. Resting clearance uses
+the field-wide global slope bound, the price v2.0.3 documented.
+The watcher watches the emission light (position and intensity);
+terrain edits and body removals are world edits its probe set
+does not observe. The demo renders by CPU march at adaptive
+resolution with reduced emission quadrature, labeled in its
+state panel; the suite grades the full policy. Readiness is
+unchanged: the engine remains TRL 8 until real operational use
+on a real headset, and nothing in this release claims otherwise.
+
 ## [2.0.8] - Emission field layer (2026-10-22)
 
 Patch release, step 8 of the road to v3.0.0, the last step before

@@ -12,6 +12,7 @@ export default defineConfig({
       input: {
         main: 'demo/index.html',
         v10: 'demo/v10.html',
+        living: 'demo/living.html',
       },
     },
   },
