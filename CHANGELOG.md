@@ -3,6 +3,82 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [2.0.6] - Interval Lipschitz guaranteed step (2026-10-22)
+
+Patch release, step 6 of the road to v3.0.0. Marching steps become
+certified: a step is taken only when an interval bound on the
+field's gradient over the step's own segment proves the field
+cannot reach zero anywhere on it. No demo change: the demo does
+not expose the new policy, and it is untouched.
+
+**What.** New `src/math/interval-march.ts`: `marchInterval` over an
+`IntervalField` (a field plus `lipOverBox`, a certified Lipschitz
+bound over any box), with `certifyStep` (propose the pointwise
+step, certify it against the bound over the proposed segment's
+box, halve on failure, regrow by 1.5 on success and keep the
+largest certified step), providers `sdfIntervalField` (SDF node
+trees via `localLipschitzBound`) and `terrainIntervalField` (grid
+terrain via the v2.0.3 per-patch slope bounds, maximized over the
+step's footprint), the sampled bound checker
+`countIntervalBoundViolations`, and the 'pointwise' and 'raw'
+policies in the same marcher for measured contrast. Scene
+integration: `MarchPolicy` gains `'interval'`; grid layers march
+the terrain surface with certified steps instead of the field-wide
+slope maximum. Every default is unchanged: 'sphere', 'fixed' and
+'terrain' results are bit-identical, including a refactor that
+factors the terrain branch's hit shaping into a helper shared
+with the new branch (pinned byte-identical). Full write-up in
+docs/interval-lipschitz.md.
+
+**Why.** Every march in the engine priced its step from
+information at a point: the raw value f(p), or the v2.0.3 terrain
+field's one global slope bound. The pointwise price is wrong
+exactly where the field gets interesting: gradients that grow
+along the step. The v2.0.3 header already warned that a purely
+local patch bound overestimates the distance next to a steep
+neighbor; this release measures that failure (a cliff ray whose
+pointwise samples go 0, 2, 4, 6 into the ramp, 0.6 past the true
+crossing) and removes the class: the step's price now comes from
+an interval bound over the region the step actually crosses, so
+the guarantee survives any field whose bound is honest, and the
+terrain march no longer pays the world's worst slope on flat
+ground.
+
+**Measured pins.** The guarantee battery (analytic or
+brute-forced ground truth throughout): the interval march
+overshoots on 0 rays across a sphere SDF, a twist SDF, a steep
+shell field (slope 1 outside radius 2, slope 6 inside), a
+square-root field whose gradient blows up at the surface, and the
+terrain scenes. The contrasts on the same rays: the raw step
+overshoots on 6 of 10 twist rays (worst 0.0797 past the truth) and
+on every shell and sqrt ray; the pointwise step overshoots on
+every shell ray (worst 0.8333 past) and tunnels clean through the
+sqrt sphere on every ray, reporting no hit at all. Terrain: on
+the 60-ray rough fan the interval march overshoots 0 times with
+worst undershoot 0.0023 (the global-S march measured 0.0133 in
+v2.0.3) in 2930 steps at the 1e-3 gap band, against the global
+march's 3456 at the same band and 2925 at its looser shipped
+band, and pointwise's 1916 steps with 12 overshoots. On an
+SDF scene fan the guarantee costs 2301 steps plus 8116 bound
+queries against raw's 308 (pointwise 2124): the release sells
+the guarantee, not speed, and says so. Negative controls:
+halving the certification bound (`boundScale: 0.5`) brings the
+overshoots back (12 of 12 shell rays; the cliff ray lands at
+5.4706 against the analytic 5.4); the bound checker grades
+honest providers at 0 violations in 4000 pairs and catches a
+halved provider at 293 and a pointwise bound passed off as an
+interval bound at 166; sign-flipped fields produce no false
+hits (startedInside everywhere) while a naive marcher
+false-hits at t = 0 on the same field. Determinism is
+bit-identical across re-runs. One defect found and fixed in the
+new marcher before it shipped: clamping the step to the
+remaining maxDist made the step exactly 0 at the boundary and
+stalled the march until the budget exhausted; the unclamped
+form (shared with sphereTrace and marchTerrain) is pinned by
+the battery's miss rays exiting in single-digit steps. Suite:
+608/608 green (593 + 15 new), including the GLSL contract
+tests. Zero new runtime dependencies.
+
 ## [2.0.5] - XPBD contact solver (2026-10-22)
 
 Patch release, step 5 of the road to v3.0.0. Contact becomes a

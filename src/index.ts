@@ -59,6 +59,7 @@ export type { ParamDef, ParamListener, DeckSection } from './ui/tuning.js';
 export { evalTerm, evalSlider, evalSemantics, SEMANTIC_SLIDERS, blocks, live, stackBlocks, sineWarp, demoWorld, demoUniforms } from './world/semantic.js';
 export type { SemanticTerm, SemanticSlider, Block } from './world/semantic.js';
 export * from './math/noisegrad.js';
+export * from './math/interval-march.js';
 export * from './math/conservative.js';
 export * from './math/overrelax.js';
 export * from './geo/terrain-dist.js';

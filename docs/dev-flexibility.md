@@ -94,7 +94,14 @@ adaptive sphere tracing, `t_{k+1} = t_k + f(o + t_k d)`. `'fixed'` marches
 in fixed steps of `MarchOpts.fixedStep`, first sample inside the surface
 wins. `'terrain'` (v2.0.3) marches grid layers over the terrain distance
 field (see feature 1) instead of the exact DDA; SDF layers sphere-trace
-as under `'sphere'`. The policy applies per scene; analytic layers (2d,
+as under `'sphere'`. `'interval'` (v2.0.6) marches grid layers over the
+same terrain surface as `'terrain'`, but every step is certified
+against the interval Lipschitz bound over the step's own segment
+(`src/math/interval-march.ts`): the step is guaranteed conservative
+from the slope bounds of the patches the step crosses, not from the
+field-wide maximum S, with the same never-overshoot guarantee (see
+docs/interval-lipschitz.md for the formulation and the measured
+tables). The policy applies per scene; analytic layers (2d,
 2.5d) are exact under every policy, and grid layers are exact under
 `'sphere'` and `'fixed'`.
 

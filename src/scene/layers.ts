@@ -23,6 +23,7 @@ import { finiteJacobian } from '../inverse/conditioning.js';
 import { irlsGnFit } from '../inverse/robust.js';
 import { raycastGrid, type GridWorld } from './grid.js';
 import { makeGridTerrain, marchTerrain } from './terrain-field.js';
+import { marchInterval, terrainIntervalField } from '../math/interval-march.js';
 
 export type DimKind = '2d' | '2.5d' | '3d' | '4d' | 'grid';
 
@@ -109,8 +110,19 @@ export type Layer = Layer2D | Layer25D | Solid3D | Field4D | GridLayer;
  *  a smoothed reading of the same world, not the stepped box geometry,
  *  so terrain hits differ from DDA hits wherever a wall face is steep:
  *  the policy is for terrain-style rendering and queries, and the DDA
- *  stays the exact path for walls. */
-export type MarchPolicy = 'sphere' | 'fixed' | 'terrain';
+ *  stays the exact path for walls.
+ *  'interval' (v2.0.6): grid layers march the same terrain surface as
+ *  'terrain', but every step is certified against the interval
+ *  Lipschitz bound over the step's own segment (src/math/interval-
+ *  march.ts): the step length is guaranteed conservative from the
+ *  slope bounds of the patches the step actually crosses, not from
+ *  the field-wide maximum S the 'terrain' policy divides by. The
+ *  guarantee matches 'terrain' (the march can approach but never
+ *  cross the analytic intersection); steps on tame ground are larger.
+ *  Other layer kinds are unaffected (they sphere-trace as under
+ *  'sphere'); the guaranteed marcher itself is field-generic and is
+ *  exported for SDF trees as marchInterval over sdfIntervalField. */
+export type MarchPolicy = 'sphere' | 'fixed' | 'terrain' | 'interval';
 
 /** Opt-in march instrumentation: when supplied, the march counts its work
  *  here. steps = march iterations; evals = field/content evaluations
@@ -328,6 +340,9 @@ function intersectGridLayer(layer: GridLayer, ray: Ray, index: number, opts: Mar
   if ((opts.policy ?? 'sphere') === 'terrain') {
     return intersectGridLayerTerrain(layer, ray, index, opts);
   }
+  if ((opts.policy ?? 'sphere') === 'interval') {
+    return intersectGridLayerInterval(layer, ray, index, opts);
+  }
   const hit = raycastGrid(layer.grid, ray.origin, ray.dir, opts.maxDist ?? MARCH_MAX_DIST);
   if (!hit) return MISS;
   return {
@@ -360,21 +375,63 @@ function intersectGridLayerTerrain(
     opts.stats.evals += res.evals;
   }
   if (!isFinite(res.depth) || !res.point) return MISS;
+  return terrainLayerHit(layer, field, index, res.depth, res.point);
+}
+
+/**
+ * Interval-policy grid intersection: march the terrain surface with
+ * the interval Lipschitz guaranteed step (src/math/interval-march.ts).
+ * Same surface and hit contract as the 'terrain' policy; the step
+ * bound comes from the patches under each step instead of the
+ * field-wide slope maximum, so tame stretches march faster while the
+ * no-overshoot guarantee is unchanged. Bound queries count as evals
+ * in the stats: they are scene evaluation work and the policy is not
+ * flattered by hiding them.
+ */
+function intersectGridLayerInterval(
+  layer: GridLayer,
+  ray: Ray,
+  index: number,
+  opts: MarchOpts,
+): LayerHit {
+  const field = makeGridTerrain(layer.grid);
+  const res = marchInterval(terrainIntervalField(field), ray.origin, ray.dir, {
+    steps: opts.steps,
+    eps: opts.eps,
+    maxDist: opts.maxDist,
+  });
+  if (opts.stats) {
+    opts.stats.steps += res.steps;
+    opts.stats.evals += res.evals + res.boundQueries;
+  }
+  if (!isFinite(res.depth) || !res.point) return MISS;
+  return terrainLayerHit(layer, field, index, res.depth, res.point);
+}
+
+/** Shared terrain hit shaping: cell under the hit point, dominant
+ *  slope axis as the side, the layer's color callback. */
+function terrainLayerHit(
+  layer: GridLayer,
+  field: ReturnType<typeof makeGridTerrain>,
+  index: number,
+  depth: number,
+  point: Vec3,
+): LayerHit {
   const g = layer.grid;
   const cs = g.cellSize;
   const cellX = Math.min(
     g.width - 1,
-    Math.max(0, Math.floor((res.point[0] - g.origin[0]) / cs)),
+    Math.max(0, Math.floor((point[0] - g.origin[0]) / cs)),
   );
   const cellZ = Math.min(
     g.depth - 1,
-    Math.max(0, Math.floor((res.point[2] - g.origin[2]) / cs)),
+    Math.max(0, Math.floor((point[2] - g.origin[2]) / cs)),
   );
-  const [gx, gz] = field.gradientAt(res.point[0], res.point[2]);
+  const [gx, gz] = field.gradientAt(point[0], point[2]);
   const side: 'x' | 'z' = Math.abs(gx) >= Math.abs(gz) ? 'x' : 'z';
   return {
-    depth: res.depth,
-    color: layer.color(cellX, cellZ, side, res.point),
+    depth,
+    color: layer.color(cellX, cellZ, side, point),
     kind: 'grid',
     layer: index,
   };
