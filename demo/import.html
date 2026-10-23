@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Inverse City Import - Polyglot Procedural Engine demo</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #05070d; font-family: system-ui, sans-serif; }
+      #app { position: fixed; inset: 0; }
+      canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+      .panel {
+        position: fixed; z-index: 10; background: rgba(10, 14, 24, 0.86);
+        border: 1px solid #1e293b; border-radius: 12px; padding: 12px 14px;
+        color: #e2e8f0; backdrop-filter: blur(6px);
+      }
+      #hud { top: 12px; left: 12px; width: 330px; max-width: calc(100vw - 24px); max-height: calc(100% - 24px); overflow-y: auto; }
+      #hud h1 { margin: 0 0 2px; font-size: 15px; font-weight: 800; letter-spacing: 0.04em; }
+      #hud p { margin: 0 0 8px; font-size: 11px; color: #94a3b8; line-height: 1.5; }
+      #hud .zero { color: #67e8f9; font-weight: 700; }
+      #ver { font-size: 10px; color: #67e8f9; font-weight: 700; margin-left: 6px; }
+      #drop {
+        border: 1.5px dashed #334155; border-radius: 10px; padding: 14px 10px;
+        text-align: center; font-size: 11.5px; color: #a5b4c8; line-height: 1.5;
+        margin: 8px 0; cursor: pointer; background: rgba(15, 23, 42, 0.5);
+      }
+      #drop.over { border-color: #67e8f9; color: #e2e8f0; background: rgba(14, 116, 144, 0.25); }
+      #btns { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+      #btns button, .rowbtn {
+        background: #0e7490; color: #fff; border: none; border-radius: 8px;
+        padding: 8px 12px; font-size: 12px; font-weight: 700; cursor: pointer;
+      }
+      #btns button:disabled, .rowbtn:disabled { background: #334155; cursor: default; opacity: 0.6; }
+      #btns button.secondary, .rowbtn.secondary { background: #1e293b; }
+      .row { display: flex; gap: 8px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
+      .row label { font-size: 11px; color: #94a3b8; }
+      .row input[type="number"] {
+        background: #1e293b; color: #e2e8f0; border: 1px solid #334155;
+        border-radius: 8px; padding: 6px 8px; font-size: 12px; width: 90px;
+      }
+      .row select {
+        background: #1e293b; color: #e2e8f0; border: 1px solid #334155;
+        border-radius: 8px; padding: 6px 8px; font-size: 12px;
+      }
+      #hud h3 { margin: 14px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #7dd3fc; }
+      #spec-list { list-style: none; margin: 4px 0; padding: 0; font-size: 11.5px; }
+      #spec-list li { display: flex; align-items: center; gap: 7px; padding: 4px 2px; border-top: 1px solid #1e293b; }
+      #spec-list .nm { cursor: pointer; flex: 1; }
+      #spec-list .nm:hover { color: #67e8f9; }
+      #spec-list .tag { color: #64748b; font-size: 10px; }
+      #spec-list li.current .nm { color: #67e8f9; font-weight: 700; }
+      #input-help { margin-top: 8px; font-size: 11px; color: #94a3b8; line-height: 1.5; }
+      #status { margin-top: 8px; font-size: 11px; color: #fbbf24; min-height: 14px; line-height: 1.5; }
+      #side { top: 12px; right: 12px; width: 318px; max-width: calc(100vw - 24px); max-height: calc(100% - 24px); overflow-y: auto; }
+      #side h2 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #7dd3fc; }
+      #stats { border-collapse: collapse; width: 100%; font-size: 11px; }
+      #stats th, #stats td { padding: 3px 4px; border-top: 1px solid #1e293b; text-align: right; }
+      #stats th:first-child, #stats td:first-child { text-align: left; color: #94a3b8; }
+      #stats th { color: #7dd3fc; font-weight: 700; }
+      #stats td.pass { color: #4ade80; font-weight: 700; }
+      #stats td.fail { color: #f87171; font-weight: 700; }
+      #city-log {
+        background: #0b1220; border: 1px solid #1e293b; border-radius: 8px;
+        padding: 8px; font-size: 10.5px; line-height: 1.5; color: #a5f3fc;
+        max-height: 180px; overflow-y: auto; white-space: pre-wrap; margin: 8px 0 0;
+      }
+      #hint {
+        position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 10;
+        color: #64748b; font-size: 11px; background: rgba(10,14,24,0.7);
+        padding: 6px 12px; border-radius: 999px; border: 1px solid #1e293b;
+        white-space: nowrap; max-width: 94vw; overflow: hidden; text-overflow: ellipsis;
+      }
+      #hud a { color: #67e8f9; font-size: 11px; }
+      .panel-close {
+        position: absolute; top: 6px; right: 6px; width: 44px; height: 44px;
+        display: flex; align-items: center; justify-content: center;
+        background: #1e293b; color: #e2e8f0; border: 1px solid #334155;
+        border-radius: 8px; font-size: 18px; line-height: 1; cursor: pointer; z-index: 2;
+      }
+      #hud h1, #hud p, #side h2 { margin-right: 44px; }
+      #menu-open {
+        position: fixed; top: 12px; left: 12px; z-index: 11; display: none;
+        align-items: center; min-height: 44px; padding: 0 18px;
+        background: rgba(10, 14, 24, 0.86); color: #e2e8f0;
+        border: 1px solid #334155; border-radius: 999px;
+        font: 700 13px system-ui, sans-serif; cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"><canvas id="scene"></canvas></div>
+    <div id="hud" class="panel">
+      <button class="panel-close" type="button" aria-label="Close panel">✕</button>
+      <h1>INVERSE CITY IMPORT<span id="ver">v3.1.0</span></h1>
+      <p><span class="zero">zero asset dependence:</span> load a real city file and the engine keeps only the math that regenerates it.</p>
+      <p>Conversion runs entirely in this browser. Your file is read once and discarded. Nothing is uploaded anywhere, and no source geometry is ever stored. What stays is a CitySpec: fitted distributions and structure parameters. Regeneration grows a sibling city from that math, the same statistical DNA, never a copy of your streets.</p>
+      <div id="drop" role="button" tabindex="0">Drop a GeoJSON city file here, or click to choose one.<br />Building footprint polygons with a height property fit best; street lines sharpen the fit.</div>
+      <input id="file" type="file" accept=".geojson,.json,application/geo+json,application/json" hidden />
+      <div id="btns">
+        <button id="btn-sample">Try the bundled sample city</button>
+        <button id="btn-download" class="secondary" disabled>Download the CitySpec (JSON)</button>
+      </div>
+      <div class="row">
+        <label for="seed">Seed</label>
+        <input id="seed" type="number" value="31007" step="1" />
+        <button id="btn-sibling" class="rowbtn secondary" disabled>New sibling from this spec</button>
+      </div>
+      <h3>Kept specs (the math only)</h3>
+      <ul id="spec-list"><li class="tag">none yet: convert a city to keep its math</li></ul>
+      <div class="row">
+        <button id="btn-blend" class="rowbtn" disabled>Blend the checked specs</button>
+      </div>
+      <div class="row">
+        <label for="input-scheme">Controls:</label>
+        <select id="input-scheme">
+          <option value="desktop">desktop</option>
+          <option value="touch">touch</option>
+        </select>
+      </div>
+      <div id="input-help"></div>
+      <div id="status"></div>
+      <p style="margin-top:8px"><a href="./index.html">First Light demo</a> · <a href="./v10.html">V10 demo</a> · <a href="./living.html">Living World demo</a></p>
+    </div>
+    <div id="side" class="panel">
+      <button class="panel-close" type="button" aria-label="Close panel">✕</button>
+      <h2>Kept math vs regenerated city</h2>
+      <table id="stats">
+        <thead><tr><th>Measure</th><th>CitySpec</th><th>Regenerated</th></tr></thead>
+        <tbody id="stats-body"><tr><td colspan="3">no city yet</td></tr></tbody>
+      </table>
+      <pre id="city-log">warming up...</pre>
+    </div>
+    <div id="hint">The preview marches the regenerated city through the terrain distance field, the same stack the test suite raycasts.</div>
+    <button id="menu-open" type="button">☰ Menu</button>
+    <script>
+      (function () {
+        var panels = [document.getElementById('hud'), document.getElementById('side')];
+        var openBtn = document.getElementById('menu-open');
+        function refresh() {
+          var anyHidden = panels.some(function (p) { return p.style.display === 'none'; });
+          openBtn.style.display = anyHidden ? 'flex' : 'none';
+        }
+        panels.forEach(function (p) {
+          p.querySelector('.panel-close').addEventListener('click', function () {
+            p.style.display = 'none';
+            refresh();
+          });
+        });
+        openBtn.addEventListener('click', function () {
+          panels.forEach(function (p) { p.style.display = ''; });
+          refresh();
+        });
+      })();
+    </script>
+    <script type="module" src="./import.ts"></script>
+  </body>
+</html>

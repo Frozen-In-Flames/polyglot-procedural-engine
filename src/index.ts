@@ -81,3 +81,5 @@ export type { FrameParams, Column, Frame, HitHookCtx, ShadeHookCtx, FrameHooks }
 export { rayTelemetry, summarizeFrame } from './render/telemetry.js';
 export type { RayTelemetry, FrameTelemetry } from './render/telemetry.js';
 export * as dev from './dev/index.js';
+export { fitCitySpec, blendCitySpecs, buildCity, measureCity, checkCityStats, cityDigest, cityLayers, cityToGrid, validateCitySpec, specMean, CITY_SPEC_VERSION, CITY_RADIAL_RINGS, CITY_AREA_EDGES, CITY_ASPECT_EDGES, CITY_HEIGHT_EDGES, CITY_ORIENTATION_BINS, CITY_DEFAULT_TOLERANCES, CITY_DEFAULT_HEIGHT_M, CITY_METERS_PER_LEVEL } from './scene/city.js';
+export type { CitySpec, HistogramFit, BuiltCity, BuiltBuilding, CityStats, CityCheck, CityTolerances } from './scene/city.js';

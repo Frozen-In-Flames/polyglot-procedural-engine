@@ -13,6 +13,7 @@ export default defineConfig({
         main: 'demo/index.html',
         v10: 'demo/v10.html',
         living: 'demo/living.html',
+        import: 'demo/import.html',
       },
     },
   },

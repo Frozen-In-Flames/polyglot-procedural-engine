@@ -3,6 +3,57 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [3.1.0] - Inverse city import (2026-10-23)
+
+**Why.** The zero asset dependence doctrine had one open side:
+user content. The engine generated every world from seeds it
+owned, so a user's own city still had to travel as geometry and
+be stored as geometry. This release closes that side. A user
+loads a real city file, the engine fits it once, and from that
+moment the file is disposable: the engine keeps only the math
+that regenerates a sibling of the city. Other engines store
+your mesh; this one stores only the math, so user uploads are
+never retained, because there is nothing to retain.
+
+**What.** `src/scene/city.ts`: `fitCitySpec` converts a GeoJSON
+city file (building footprint polygons with heights, street
+lines when present, the shape an OpenStreetMap export produces)
+or the engine's own layout JSON into a `CitySpec`, a compact
+JSON of fitted parameters and distributions: extent, building
+count and density, footprint area and aspect histograms, height
+histogram, an orientation field summary, a radial density
+profile with its fitted falloff exponent, and street structure
+parameters. The spec contains no source geometry, and the suite
+proves that structurally. `buildCity(spec, seed)` regenerates a
+deterministic sibling city from the spec alone (digest
+`a8137334c5b7129c` for the 49-building fixture at seed 31007),
+graded by a statistics oracle (`measureCity` / `checkCityStats`)
+that compares the regenerated city's measured distributions
+against the spec's targets. `blendCitySpecs` pools fitted
+specs into a mixture spec whose regeneration is a new city,
+none of the sources, carrying their shared DNA; blends operate
+only on retained specs, never on source files. The built city
+composes through the engine's existing stacks: `cityLayers`
+(a Solid3D SDF layer for `marchScene`) and `cityToGrid` (a
+GridWorld for the v2.0.3 terrain distance field). Demo:
+`demo/import.html`, drag and drop or pick a file, conversion
+runs client-side, source statistics and regenerated statistics
+sit side by side with the oracle verdict, and the page states
+plainly that the file is discarded and only the CitySpec is
+kept, with buttons to download the spec, grow a new sibling
+from a new seed, and blend kept specs. Fidelity, stated
+honestly in `docs/city-import.md`: regeneration is a sibling
+with the same statistical and structural DNA, not a mesh copy.
+
+Tests: 12 new tests in `test/city-import.test.ts` (fit against
+an independent in-test oracle, the discard contract, the
+statistics oracle on two fixtures, determinism, engine-stack
+composition, blending) with the campaign's negative controls:
+corrupted distributions fail the oracle naming the broken
+measure, a spatially shuffled fixture fits 2.000 L1 away in
+orientation and shifts a blend by 1.400, and degenerate inputs
+are rejected with plain-language errors.
+
 ## [3.0.0] - Living worlds (2026-10-22)
 
 The integration release that completes the V3 campaign: the
