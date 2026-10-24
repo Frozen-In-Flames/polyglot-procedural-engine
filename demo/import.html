@@ -90,11 +90,11 @@
     <div id="app"><canvas id="scene"></canvas></div>
     <div id="hud" class="panel">
       <button class="panel-close" type="button" aria-label="Close panel">✕</button>
-      <h1>INVERSE CITY IMPORT<span id="ver">v3.1.0</span></h1>
+      <h1>INVERSE CITY IMPORT<span id="ver">v3.2.0</span></h1>
       <p><span class="zero">zero asset dependence:</span> load a real city file and the engine keeps only the math that regenerates it.</p>
       <p>Conversion runs entirely in this browser. Your file is read once and discarded. Nothing is uploaded anywhere, and no source geometry is ever stored. What stays is a CitySpec: fitted distributions and structure parameters. Regeneration grows a sibling city from that math, the same statistical DNA, never a copy of your streets.</p>
-      <div id="drop" role="button" tabindex="0">Drop a GeoJSON city file here, or click to choose one.<br />Building footprint polygons with a height property fit best; street lines sharpen the fit.</div>
-      <input id="file" type="file" accept=".geojson,.json,application/geo+json,application/json" hidden />
+      <div id="drop" role="button" tabindex="0">Drop a city file here, or click to choose one.<br />GeoJSON, layout JSON, OBJ, glTF, and GLB all fit through the same converter. Mesh groups and glTF mesh nodes fit as buildings; street lines in GeoJSON sharpen the fit.</div>
+      <input id="file" type="file" accept=".geojson,.json,.obj,.gltf,.glb,application/geo+json,application/json,model/gltf+json,model/gltf-binary" hidden />
       <div id="btns">
         <button id="btn-sample">Try the bundled sample city</button>
         <button id="btn-download" class="secondary" disabled>Download the CitySpec (JSON)</button>

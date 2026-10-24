@@ -1,10 +1,11 @@
-// scene/city.ts - inverse city import (v3.1.0).
+// scene/city.ts - inverse city import (v3.2.0).
 //
 // A user loads a REAL city file (GeoJSON building footprints and
-// streets, the shape an OpenStreetMap export produces, or this
-// engine's own small layout JSON). The converter fits the file
-// ONCE into a CitySpec: a compact bundle of fitted parameters and
-// distributions. After the fit the source file is discarded. The
+// streets, this engine's own small layout JSON, an OBJ mesh, or
+// a self-contained glTF mesh). Every format first normalizes to
+// footprint polygons and heights. The converter then fits that
+// one intermediate form ONCE into a CitySpec: a compact bundle
+// of fitted parameters and distributions. After the fit the source file is discarded. The
 // spec is the only thing retained, and it is all the engine ever
 // keeps: zero asset dependence extended to user content. Other
 // engines store your mesh; this one stores only the math that
@@ -55,6 +56,14 @@
 // their lots collide, because the spec carries statistics, not a
 // cadastral map.
 import { Pcg32 } from '../math/determinism.js';
+import {
+  compose as composeMat4,
+  identity as identityMat4,
+  multiply as multiplyMat4,
+  transformPoint,
+  type Mat4,
+} from '../math/mat.js';
+import { toMat4 as quatToMat4, type Quat } from '../math/quat.js';
 import type { Vec3 } from '../math/vec.js';
 import { makeGrid, type GridWorld } from './grid.js';
 import type { Layer } from './layers.js';
@@ -387,6 +396,31 @@ function heightOf(props: Record<string, unknown> | undefined): number {
   return CITY_DEFAULT_HEIGHT_M;
 }
 
+/** One building after a format door has done its work: a ground
+ *  plane footprint polygon in meters ([x east, z south]) and a
+ *  height in meters. Every source format normalizes to this one
+ *  form, and the fit below consumes nothing else. */
+export interface CityBuildingInput {
+  footprint: Array<[number, number]>;
+  height: number;
+}
+
+/** One street centerline in the same ground plane as the
+ *  building footprints. Mesh formats carry no streets. */
+export interface CityStreetInput {
+  points: Array<[number, number]>;
+  width: number;
+}
+
+/** The one intermediate city form. GeoJSON, layout JSON, OBJ,
+ *  and glTF all land here; fitting, blending, and regeneration
+ *  never see a source format again. */
+export interface NormalizedCityInput {
+  buildings: CityBuildingInput[];
+  streets: CityStreetInput[];
+  layout: boolean;
+}
+
 interface ParsedCity {
   footprints: Footprint[];
   streets: StreetSeg[];
@@ -426,7 +460,139 @@ function clippedLength(
   return Math.hypot(dx, dz) * (t1 - t0);
 }
 
-function parseGeoJson(doc: Record<string, unknown>): ParsedCity {
+/** Reduce one normalized footprint polygon to the fitted shape
+ *  statistics the rest of the converter uses. The polygon lives
+ *  in (x east, z south); the PCA runs in (x, north), the frame
+ *  the v3.1.0 GeoJSON fit used, so a GeoJSON polygon reduces to
+ *  exactly the same footprint it did before the refactor. */
+function footprintFromPolygon(
+  polygon: Array<[number, number]>,
+  height: number,
+): Footprint {
+  if (
+    !Array.isArray(polygon) ||
+    polygon.length < 3 ||
+    polygon.some(
+      (p) =>
+        !Array.isArray(p) ||
+        p.length !== 2 ||
+        !Number.isFinite(p[0]) ||
+        !Number.isFinite(p[1]),
+    )
+  ) {
+    throw new Error('fitCitySpec: degenerate footprint (a building needs at least three finite ground points)');
+  }
+  if (!Number.isFinite(height)) {
+    throw new Error('fitCitySpec: building height is not finite');
+  }
+  const { area, cx, cy } = shoelace(polygon);
+  if (!(area > 0.01)) {
+    throw new Error('fitCitySpec: degenerate footprint (zero-area polygon) in the source file');
+  }
+  const northPts = polygon.map(([x, z]) => [x, -z] as [number, number]);
+  const frame = pcaFrame(northPts, cx, -cy);
+  const long = Math.max(frame.w, frame.d);
+  const short = Math.min(frame.w, frame.d);
+  let angleNorth = frame.angleNorth;
+  if (frame.d > frame.w) angleNorth += Math.PI / 2;
+  let angle = Math.atan2(Math.sin(angleNorth), Math.cos(angleNorth)) * -1;
+  angle = ((angle % Math.PI) + Math.PI) % Math.PI;
+  return {
+    cx,
+    cz: cy,
+    area,
+    aspect: short > 0 ? long / short : 1,
+    angle,
+    height,
+  };
+}
+
+/** Convert the normalized intermediate form into fitted
+ *  footprints and street segments, recentered on the extent
+ *  center. This is the only route from a source format to the
+ *  fit, whatever door the city came through. */
+function fittedCity(normalized: NormalizedCityInput): ParsedCity {
+  if (!Array.isArray(normalized.buildings) || normalized.buildings.length === 0) {
+    throw new Error('fitCitySpec: no building footprints found');
+  }
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (const b of normalized.buildings) {
+    for (const [x, z] of b.footprint) {
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (z < minZ) minZ = z;
+      if (z > maxZ) maxZ = z;
+    }
+  }
+  const width = maxX - minX;
+  const depth = maxZ - minZ;
+  if (!(width > 0 && depth > 0)) {
+    throw new Error('fitCitySpec: degenerate city extent (zero width or depth)');
+  }
+  const ccx = (minX + maxX) / 2;
+  const ccz = (minZ + maxZ) / 2;
+  const footprints = normalized.buildings.map((b) => {
+    const f = footprintFromPolygon(b.footprint, b.height);
+    return { ...f, cx: f.cx - ccx, cz: f.cz - ccz };
+  });
+  const streets: StreetSeg[] = [];
+  for (const s of normalized.streets ?? []) {
+    for (let i = 0; i + 1 < s.points.length; i++) {
+      streets.push({
+        x1: s.points[i][0] - ccx,
+        z1: s.points[i][1] - ccz,
+        x2: s.points[i + 1][0] - ccx,
+        z2: s.points[i + 1][1] - ccz,
+        width: s.width,
+      });
+    }
+  }
+  return {
+    footprints,
+    streets,
+    extentM: { width, depth },
+    layout: normalized.layout,
+  };
+}
+
+/** Andrew monotone chain convex hull of ground points. Collinear
+ *  interior points are dropped, so a rectangular footprint keeps
+ *  its four corners. Returns an empty or short array when the
+ *  points cannot bound an area. */
+function convexHull(points: Array<[number, number]>): Array<[number, number]> {
+  const unique = new Map<string, [number, number]>();
+  for (const p of points) unique.set(`${p[0]},${p[1]}`, p);
+  const pts = [...unique.values()].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (pts.length < 3) return pts;
+  const cross = (
+    o: [number, number],
+    a: [number, number],
+    b: [number, number],
+  ): number => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower: Array<[number, number]> = [];
+  for (const p of pts) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
+      lower.pop();
+    }
+    lower.push(p);
+  }
+  const upper: Array<[number, number]> = [];
+  for (let i = pts.length - 1; i >= 0; i--) {
+    const p = pts[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
+      upper.pop();
+    }
+    upper.push(p);
+  }
+  lower.pop();
+  upper.pop();
+  return [...lower, ...upper];
+}
+
+function parseGeoJson(doc: Record<string, unknown>): NormalizedCityInput {
   // Collect features from FeatureCollection / Feature / bare geometry.
   let features: Array<Record<string, unknown>> = [];
   if (doc.type === 'FeatureCollection' && Array.isArray(doc.features)) {
@@ -493,76 +659,20 @@ function parseGeoJson(doc: Record<string, unknown>): ParsedCity {
     (lon - lon0) * mPerDegLon,
     -(lat - lat0) * M_PER_DEG_LAT, // z = south
   ];
-  const footprints: Footprint[] = [];
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minZ = Infinity;
-  let maxZ = -Infinity;
-  for (const { ring, props } of polys) {
-    const mPts = ring.map(([lon, lat]) => {
-      const [x, z] = toM(lon, lat);
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (z < minZ) minZ = z;
-      if (z > maxZ) maxZ = z;
-      return [x, -z] as [number, number]; // PCA in (x, north)
-    });
-    const { area, cx, cy } = shoelace(mPts);
-    if (!(area > 0.01)) {
-      throw new Error(
-        'fitCitySpec: degenerate footprint (zero-area polygon) in the source file',
-      );
-    }
-    const frame = pcaFrame(mPts, cx, cy);
-    const long = Math.max(frame.w, frame.d);
-    const short = Math.min(frame.w, frame.d);
-    // Long-axis angle in the spec frame: the PCA axis in (x, north)
-    // maps to (x, z = -north); take the axis direction as-is when
-    // the long side follows the PCA axis, or rotated 90 degrees
-    // when the long side is the cross axis.
-    let angleNorth = frame.angleNorth;
-    if (frame.d > frame.w) angleNorth += Math.PI / 2;
-    let angle = Math.atan2(Math.sin(angleNorth), Math.cos(angleNorth)) * -1;
-    angle = ((angle % Math.PI) + Math.PI) % Math.PI;
-    footprints.push({
-      cx,
-      cz: -cy,
-      area,
-      aspect: short > 0 ? long / short : 1,
-      angle,
-      height: heightOf(props),
-    });
-  }
-  const width = maxX - minX;
-  const depth = maxZ - minZ;
-  if (!(width > 0 && depth > 0)) {
-    throw new Error('fitCitySpec: degenerate city extent (zero width or depth)');
-  }
-  const ccx = (minX + maxX) / 2;
-  const ccz = (minZ + maxZ) / 2;
-  for (const f of footprints) {
-    f.cx -= ccx;
-    f.cz -= ccz;
-  }
-  const streets: StreetSeg[] = [];
-  for (const { pts, props } of lines) {
-    const w = numOr(props.width, 12);
-    for (let i = 0; i + 1 < pts.length; i++) {
-      const [x1, z1] = toM(pts[i][0], pts[i][1]);
-      const [x2, z2] = toM(pts[i + 1][0], pts[i + 1][1]);
-      streets.push({ x1: x1 - ccx, z1: z1 - ccz, x2: x2 - ccx, z2: z2 - ccz, width: w });
-    }
-  }
-  return { footprints, streets, extentM: { width, depth }, layout: false };
+  const buildings: CityBuildingInput[] = polys.map(({ ring, props }) => ({
+    footprint: ring.map(([lon, lat]) => toM(lon, lat)),
+    height: heightOf(props),
+  }));
+  const streets: CityStreetInput[] = lines.map(({ pts, props }) => ({
+    points: pts.map(([lon, lat]) => toM(lon, lat)),
+    width: numOr(props.width, 12),
+  }));
+  return { buildings, streets, layout: false };
 }
 
-function parseLayout(doc: Record<string, unknown>): ParsedCity {
+function parseLayout(doc: Record<string, unknown>): NormalizedCityInput {
   const list = doc.buildings as Array<Record<string, unknown>>;
-  const footprints: Footprint[] = [];
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minZ = Infinity;
-  let maxZ = -Infinity;
+  const buildings: CityBuildingInput[] = [];
   for (const b of list) {
     const x = numOr(b.x, NaN);
     const z = numOr(b.z, NaN);
@@ -574,49 +684,444 @@ function parseLayout(doc: Record<string, unknown>): ParsedCity {
     }
     let angle = numOr(b.angle, 0);
     angle = ((angle % Math.PI) + Math.PI) % Math.PI;
-    footprints.push({
-      cx: x,
-      cz: z,
-      area: w * d,
-      aspect: Math.max(w, d) / Math.min(w, d),
-      angle,
-      height,
-    });
     const ca = Math.cos(angle);
     const sa = Math.sin(angle);
-    for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const) {
-      const lx = (sx * w) / 2;
-      const lz = (sz * d) / 2;
-      const px = x + lx * ca - lz * sa;
-      const pz = z + lx * sa + lz * ca;
-      if (px < minX) minX = px;
-      if (px > maxX) maxX = px;
-      if (pz < minZ) minZ = pz;
-      if (pz > maxZ) maxZ = pz;
-    }
+    const footprint = ([[-1, -1], [1, -1], [1, 1], [-1, 1]] as const).map(
+      ([sx, sz]) => {
+        const lx = (sx * w) / 2;
+        const lz = (sz * d) / 2;
+        return [
+          x + lx * ca - lz * sa,
+          z + lx * sa + lz * ca,
+        ] as [number, number];
+      },
+    );
+    buildings.push({ footprint, height });
   }
-  const streets: StreetSeg[] = [];
+  const streets: CityStreetInput[] = [];
   if (Array.isArray(doc.streets)) {
     for (const s of doc.streets as Array<Record<string, unknown>>) {
       const pts = (s.points as number[][]) ?? [];
-      const w = numOr(s.width, 12);
-      for (let i = 0; i + 1 < pts.length; i++) {
-        streets.push({
-          x1: pts[i][0],
-          z1: pts[i][1],
-          x2: pts[i + 1][0],
-          z2: pts[i + 1][1],
-          width: w,
-        });
+      streets.push({
+        points: pts.map((p) => [p[0], p[1]] as [number, number]),
+        width: numOr(s.width, 12),
+      });
+    }
+  }
+  return { buildings, streets, layout: true };
+}
+
+export type MeshUpAxis = 'y' | 'z';
+
+interface ObjGroup {
+  name: string;
+  vertexIndices: Set<number>;
+}
+
+/** Parse a Wavefront OBJ city into the normalized form.
+ *
+ * Building boundary rule: each `o` or `g` group with faces is
+ * one building. Vertices are associated with a group through its
+ * faces, which is the association the OBJ format itself makes.
+ * A file with no groups is one building. The footprint is the
+ * convex hull of the group's vertices projected onto the ground
+ * plane. Height is the group's extent along the up axis.
+ *
+ * Up axis rule: OBJ is read as Y-up by default, the format's
+ * usual convention. A caller with a Z-up file passes
+ * `{ upAxis: 'z' }`; the choice is explicit, never guessed. */
+export function parseObjCity(
+  text: string,
+  opts: { upAxis?: MeshUpAxis } = {},
+): NormalizedCityInput {
+  if (typeof text !== 'string') {
+    throw new Error('fitCitySpec: OBJ input must be text');
+  }
+  const upAxis = opts.upAxis ?? 'y';
+  const vertices: Array<[number, number, number]> = [];
+  const groups: ObjGroup[] = [];
+  const ungrouped: ObjGroup = { name: 'Ungrouped OBJ', vertexIndices: new Set() };
+  let current: ObjGroup | null = null;
+  const faceGroup = (): ObjGroup => {
+    if (current) return current;
+    if (!groups.includes(ungrouped)) groups.push(ungrouped);
+    return ungrouped;
+  };
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const parts = line.split(/\s+/);
+    const keyword = parts[0];
+    if (keyword === 'v') {
+      const v = parts.slice(1, 4).map(Number);
+      if (v.length !== 3 || !v.every(Number.isFinite)) {
+        throw new Error(`fitCitySpec: OBJ vertex line is not three finite numbers: "${line}"`);
+      }
+      vertices.push(v as [number, number, number]);
+    } else if (keyword === 'o' || keyword === 'g') {
+      const name = line.slice(keyword.length).trim() || 'Unnamed OBJ group';
+      current = { name, vertexIndices: new Set() };
+      groups.push(current);
+    } else if (keyword === 'f') {
+      const group = faceGroup();
+      for (const token of parts.slice(1)) {
+        const first = token.split('/')[0];
+        const rawIndex = Number(first);
+        if (!Number.isInteger(rawIndex) || rawIndex === 0) {
+          throw new Error(`fitCitySpec: OBJ face has an invalid vertex index: "${token}"`);
+        }
+        const resolved = rawIndex > 0 ? rawIndex - 1 : vertices.length + rawIndex;
+        if (resolved < 0 || resolved >= vertices.length) {
+          throw new Error(`fitCitySpec: OBJ face index ${rawIndex} is outside the vertex list`);
+        }
+        group.vertexIndices.add(resolved);
       }
     }
   }
-  return {
-    footprints,
-    streets,
-    extentM: { width: maxX - minX, depth: maxZ - minZ },
-    layout: true,
+  if (vertices.length === 0) {
+    throw new Error('fitCitySpec: OBJ file contains no vertices to fit');
+  }
+  let active = groups.filter((g) => g.vertexIndices.size > 0);
+  if (active.length === 0) {
+    active = [{
+      name: 'Ungrouped OBJ',
+      vertexIndices: new Set(vertices.map((_, i) => i)),
+    }];
+  }
+  const buildings: CityBuildingInput[] = [];
+  for (const group of active) {
+    const pts = [...group.vertexIndices].map((i) => vertices[i]);
+    const vertical = pts.map((p) => (upAxis === 'y' ? p[1] : p[2]));
+    const height = Math.max(...vertical) - Math.min(...vertical);
+    if (!(height > 0)) {
+      throw new Error(
+        `fitCitySpec: OBJ building "${group.name}" has zero height; every mesh building needs a positive height`,
+      );
+    }
+    const footprint = convexHull(
+      pts.map((p) => (upAxis === 'y' ? [p[0], p[2]] : [p[0], p[1]]) as [number, number]),
+    );
+    if (footprint.length < 3) {
+      throw new Error(`fitCitySpec: OBJ building "${group.name}" has a degenerate footprint`);
+    }
+    buildings.push({ footprint, height });
+  }
+  if (buildings.length === 0) {
+    throw new Error('fitCitySpec: no building footprints found in the OBJ file');
+  }
+  return { buildings, streets: [], layout: false };
+}
+
+const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+function bytesFromBase64(input: string): Uint8Array {
+  const clean = input.replace(/\s+/g, '');
+  const out: number[] = [];
+  let value = 0;
+  let bits = 0;
+  for (const ch of clean) {
+    if (ch === '=') break;
+    const digit = BASE64_ALPHABET.indexOf(ch);
+    if (digit < 0) throw new Error('fitCitySpec: glTF embedded buffer is not valid base64');
+    value = (value << 6) | digit;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      out.push((value >> bits) & 0xff);
+      value &= bits > 0 ? (1 << bits) - 1 : 0;
+    }
+  }
+  return new Uint8Array(out);
+}
+
+function gltfEmbeddedBuffer(doc: Record<string, unknown>): Uint8Array {
+  const buffers = doc.buffers as Array<Record<string, unknown>> | undefined;
+  if (!Array.isArray(buffers) || buffers.length === 0) {
+    throw new Error(
+      'fitCitySpec: this glTF JSON does not contain an embedded buffer; export a binary .glb or embed the buffer in the glTF file',
+    );
+  }
+  const uri = buffers[0].uri;
+  if (typeof uri !== 'string' || uri.length === 0) {
+    throw new Error(
+      'fitCitySpec: this glTF JSON does not contain an embedded buffer; export a binary .glb or embed the buffer in the glTF file',
+    );
+  }
+  if (!uri.startsWith('data:')) {
+    throw new Error(
+      `fitCitySpec: this glTF file references an external buffer file "${uri}"; one dropped file cannot carry that sidecar. Export a binary .glb or embed the buffer in the glTF file`,
+    );
+  }
+  const comma = uri.indexOf(',');
+  if (comma < 0) {
+    throw new Error('fitCitySpec: glTF embedded buffer data URI is malformed');
+  }
+  return bytesFromBase64(uri.slice(comma + 1));
+}
+
+function parseGlb(input: ArrayBuffer | Uint8Array): {
+  doc: Record<string, unknown>;
+  bin: Uint8Array;
+} {
+  const bytes =
+    input instanceof Uint8Array
+      ? input
+      : ArrayBuffer.isView(input)
+        ? new Uint8Array(input.buffer, input.byteOffset, input.byteLength)
+        : new Uint8Array(input);
+  if (bytes.length < 12) {
+    throw new Error('fitCitySpec: GLB file is too short to contain a header');
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (view.getUint32(0, true) !== 0x46546c67) {
+    throw new Error('fitCitySpec: GLB file does not start with the glTF binary magic');
+  }
+  if (view.getUint32(4, true) !== 2) {
+    throw new Error('fitCitySpec: only GLB version 2 is supported');
+  }
+  let offset = 12;
+  let doc: Record<string, unknown> | null = null;
+  let bin: Uint8Array | null = null;
+  while (offset + 8 <= bytes.length) {
+    const chunkLength = view.getUint32(offset, true);
+    const chunkType = view.getUint32(offset + 4, true);
+    const start = offset + 8;
+    if (start + chunkLength > bytes.length) {
+      throw new Error('fitCitySpec: GLB chunk runs past the end of the file');
+    }
+    if (chunkType === 0x4e4f534a) {
+      const text = new TextDecoder().decode(bytes.slice(start, start + chunkLength)).trim();
+      try {
+        doc = JSON.parse(text) as Record<string, unknown>;
+      } catch {
+        throw new Error('fitCitySpec: GLB JSON chunk is not valid JSON');
+      }
+    } else if (chunkType === 0x004e4942) {
+      bin = bytes.slice(start, start + chunkLength);
+    }
+    offset = start + chunkLength;
+  }
+  if (!doc) throw new Error('fitCitySpec: GLB file contains no JSON chunk');
+  if (!bin) throw new Error('fitCitySpec: GLB file contains no binary buffer chunk');
+  return { doc, bin };
+}
+
+function readGltfComponent(
+  view: DataView,
+  offset: number,
+  componentType: number,
+  normalized: boolean,
+): number {
+  switch (componentType) {
+    case 5126: return view.getFloat32(offset, true);
+    case 5125: {
+      const v = view.getUint32(offset, true);
+      return normalized ? v / 4294967295 : v;
+    }
+    case 5123: {
+      const v = view.getUint16(offset, true);
+      return normalized ? v / 65535 : v;
+    }
+    case 5122: {
+      const v = view.getInt16(offset, true);
+      return normalized ? Math.max(v / 32767, -1) : v;
+    }
+    case 5121: {
+      const v = view.getUint8(offset);
+      return normalized ? v / 255 : v;
+    }
+    case 5120: {
+      const v = view.getInt8(offset);
+      return normalized ? Math.max(v / 127, -1) : v;
+    }
+    default:
+      throw new Error(`fitCitySpec: unsupported glTF accessor component type ${componentType}`);
+  }
+}
+
+function gltfComponentBytes(componentType: number): number {
+  switch (componentType) {
+    case 5120:
+    case 5121: return 1;
+    case 5122:
+    case 5123: return 2;
+    case 5125:
+    case 5126: return 4;
+    default:
+      throw new Error(`fitCitySpec: unsupported glTF accessor component type ${componentType}`);
+  }
+}
+
+function readGltfPositions(
+  doc: Record<string, unknown>,
+  bin: Uint8Array,
+  accessorIndex: number,
+): Array<[number, number, number]> {
+  const accessors = doc.accessors as Array<Record<string, unknown>> | undefined;
+  const bufferViews = doc.bufferViews as Array<Record<string, unknown>> | undefined;
+  const accessor = accessors?.[accessorIndex];
+  if (!accessor) {
+    throw new Error(`fitCitySpec: glTF position accessor ${accessorIndex} is missing`);
+  }
+  if (accessor.type !== 'VEC3') {
+    throw new Error('fitCitySpec: glTF POSITION accessor must be VEC3');
+  }
+  const bufferView = bufferViews?.[Number(accessor.bufferView ?? -1)];
+  if (!bufferView) {
+    throw new Error('fitCitySpec: glTF position accessor has no buffer view');
+  }
+  if (Number(bufferView.buffer ?? 0) !== 0) {
+    throw new Error('fitCitySpec: glTF positions in a second buffer are not supported by the single-file importer');
+  }
+  const componentType = Number(accessor.componentType);
+  const componentBytes = gltfComponentBytes(componentType);
+  const stride = Number(bufferView.byteStride ?? componentBytes * 3);
+  const start = Number(bufferView.byteOffset ?? 0) + Number(accessor.byteOffset ?? 0);
+  const count = Number(accessor.count ?? 0);
+  if (!Number.isInteger(count) || count < 0) {
+    throw new Error('fitCitySpec: glTF position accessor count is invalid');
+  }
+  const view = new DataView(bin.buffer, bin.byteOffset, bin.byteLength);
+  const normalized = accessor.normalized === true;
+  const out: Array<[number, number, number]> = [];
+  for (let i = 0; i < count; i++) {
+    const base = start + i * stride;
+    out.push([
+      readGltfComponent(view, base, componentType, normalized),
+      readGltfComponent(view, base + componentBytes, componentType, normalized),
+      readGltfComponent(view, base + componentBytes * 2, componentType, normalized),
+    ]);
+  }
+  return out;
+}
+
+function gltfLocalMatrix(node: Record<string, unknown>): Mat4 {
+  if (Array.isArray(node.matrix)) {
+    if (node.matrix.length !== 16 || !node.matrix.every((v) => Number.isFinite(Number(v)))) {
+      throw new Error('fitCitySpec: glTF node matrix must contain 16 finite numbers');
+    }
+    return Float32Array.from(node.matrix.map(Number));
+  }
+  const translation = (Array.isArray(node.translation) ? node.translation : [0, 0, 0]).map(Number) as Vec3;
+  const scale = (Array.isArray(node.scale) ? node.scale : [1, 1, 1]).map(Number) as Vec3;
+  const rotation = (Array.isArray(node.rotation) ? node.rotation : [0, 0, 0, 1]).map(Number) as Quat;
+  if (
+    translation.length !== 3 || scale.length !== 3 || rotation.length !== 4 ||
+    ![...translation, ...scale, ...rotation].every(Number.isFinite)
+  ) {
+    throw new Error('fitCitySpec: glTF node transform contains non-finite values');
+  }
+  return composeMat4(translation, quatToMat4(rotation), scale);
+}
+
+function buildingFromMeshPoints(
+  points: Array<[number, number, number]>,
+  label: string,
+): CityBuildingInput {
+  if (points.length === 0) {
+    throw new Error(`fitCitySpec: ${label} contains no position vertices`);
+  }
+  const height = Math.max(...points.map((p) => p[1])) - Math.min(...points.map((p) => p[1]));
+  if (!(height > 0)) {
+    throw new Error(`fitCitySpec: ${label} has zero height; every mesh building needs a positive height`);
+  }
+  const footprint = convexHull(points.map((p) => [p[0], p[2]] as [number, number]));
+  if (footprint.length < 3) {
+    throw new Error(`fitCitySpec: ${label} has a degenerate footprint`);
+  }
+  return { footprint, height };
+}
+
+/** Parse a self-contained glTF city into the normalized form.
+ *
+ * Building boundary rule: each scene node that carries a mesh is
+ * one building, with the full scene graph transform applied to
+ * the mesh position vertices. The footprint is the convex hull
+ * of those vertices projected onto the ground plane, and height
+ * is the transformed Y extent. glTF is Y-up by specification.
+ *
+ * The importer accepts glTF JSON with an embedded data URI
+ * buffer and the binary GLB container. A glTF JSON file that
+ * references an external buffer is rejected in plain language:
+ * the sidecar cannot travel with one dropped file. */
+export function parseGltfCity(input: unknown): NormalizedCityInput {
+  let doc: Record<string, unknown>;
+  let bin: Uint8Array;
+  if (input instanceof ArrayBuffer || ArrayBuffer.isView(input)) {
+    const parsed = parseGlb(input as ArrayBuffer | Uint8Array);
+    doc = parsed.doc;
+    bin = parsed.bin;
+  } else if (typeof input === 'string') {
+    try {
+      doc = JSON.parse(input) as Record<string, unknown>;
+    } catch {
+      throw new Error('fitCitySpec: glTF input is not valid JSON');
+    }
+    bin = gltfEmbeddedBuffer(doc);
+  } else if (input && typeof input === 'object') {
+    doc = input as Record<string, unknown>;
+    bin = gltfEmbeddedBuffer(doc);
+  } else {
+    throw new Error('fitCitySpec: unsupported glTF input');
+  }
+  const meshes = doc.meshes as Array<Record<string, unknown>> | undefined;
+  if (!Array.isArray(meshes) || meshes.length === 0) {
+    throw new Error('fitCitySpec: glTF file contains no meshes');
+  }
+  const buildings: CityBuildingInput[] = [];
+  const addMesh = (meshIndex: number, world: Mat4, label: string): void => {
+    const mesh = meshes[meshIndex];
+    if (!mesh) throw new Error(`fitCitySpec: glTF mesh ${meshIndex} is missing`);
+    const points: Array<[number, number, number]> = [];
+    const primitives = mesh.primitives as Array<Record<string, unknown>> | undefined;
+    if (!Array.isArray(primitives) || primitives.length === 0) {
+      throw new Error(`fitCitySpec: ${label} contains no mesh primitives`);
+    }
+    for (const primitive of primitives) {
+      const attributes = primitive.attributes as Record<string, unknown> | undefined;
+      const positionIndex = Number(attributes?.POSITION);
+      if (!Number.isInteger(positionIndex)) continue;
+      for (const p of readGltfPositions(doc, bin, positionIndex)) {
+        const w = transformPoint(world, p);
+        points.push([w[0], w[1], w[2]]);
+      }
+    }
+    buildings.push(buildingFromMeshPoints(points, label));
   };
+  const nodes = doc.nodes as Array<Record<string, unknown>> | undefined;
+  const scenes = doc.scenes as Array<Record<string, unknown>> | undefined;
+  const sceneIndex = typeof doc.scene === 'number' ? doc.scene : 0;
+  const roots = scenes?.[sceneIndex]?.nodes as number[] | undefined;
+  if (Array.isArray(nodes) && Array.isArray(roots)) {
+    const visiting = new Set<number>();
+    const visit = (nodeIndex: number, parent: Mat4): void => {
+      if (visiting.has(nodeIndex)) {
+        throw new Error('fitCitySpec: glTF scene graph contains a cycle');
+      }
+      const node = nodes[nodeIndex];
+      if (!node) throw new Error(`fitCitySpec: glTF node ${nodeIndex} is missing`);
+      visiting.add(nodeIndex);
+      const world = multiplyMat4(parent, gltfLocalMatrix(node));
+      if (typeof node.mesh === 'number') {
+        const label = typeof node.name === 'string' && node.name
+          ? `glTF building "${node.name}"`
+          : `glTF node ${nodeIndex}`;
+        addMesh(node.mesh, world, label);
+      }
+      const children = Array.isArray(node.children) ? node.children : [];
+      for (const child of children) {
+        if (typeof child === 'number') visit(child, world);
+      }
+      visiting.delete(nodeIndex);
+    };
+    for (const root of roots) visit(root, identityMat4());
+  } else {
+    meshes.forEach((_, i) => addMesh(i, identityMat4(), `glTF mesh ${i}`));
+  }
+  if (buildings.length === 0) {
+    throw new Error('fitCitySpec: no building meshes found in the glTF scene');
+  }
+  return { buildings, streets: [], layout: false };
 }
 
 // ---------------------------------------------------------------------------
@@ -688,21 +1193,64 @@ function orientationSummary(angles: number[]): CitySpec['orientation'] {
  *  nothing in the returned spec is copied geometry (see header).
  *  Throws with a plain-language message on unsupported or
  *  degenerate input. */
-export function fitCitySpec(
-  input: unknown,
-  opts: { name?: string } = {},
-): CitySpec {
-  if (
-    !input ||
-    typeof input !== 'object' ||
-    Array.isArray(input)
-  ) {
-    throw new Error('fitCitySpec: unsupported city input (expected a GeoJSON document or a layout object)');
-  }
-  const doc = input as Record<string, unknown>;
+export interface CityFitOptions {
+  name?: string;
+  /** OBJ only: the vertical axis in the source file. Default 'y'. */
+  objUpAxis?: MeshUpAxis;
+}
+
+function isGltfDocument(doc: Record<string, unknown>): boolean {
+  return (
+    (doc.asset !== null && typeof doc.asset === 'object') ||
+    Array.isArray(doc.meshes) ||
+    Array.isArray(doc.buffers)
+  );
+}
+
+function normalizedFromDocument(doc: Record<string, unknown>): NormalizedCityInput {
+  if (isGltfDocument(doc)) return parseGltfCity(doc);
   const isLayout =
     Array.isArray(doc.buildings) && typeof doc.type !== 'string';
-  const parsed = isLayout ? parseLayout(doc) : parseGeoJson(doc);
+  return isLayout ? parseLayout(doc) : parseGeoJson(doc);
+}
+
+function normalizedFromInput(
+  input: unknown,
+  opts: CityFitOptions,
+): NormalizedCityInput {
+  if (typeof input === 'string') {
+    const text = input.trim();
+    if (!text) {
+      throw new Error('fitCitySpec: unsupported city input (empty file)');
+    }
+    if (text.startsWith('{')) {
+      let doc: unknown;
+      try {
+        doc = JSON.parse(text);
+      } catch {
+        throw new Error('fitCitySpec: JSON city file could not be parsed');
+      }
+      if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
+        throw new Error('fitCitySpec: unsupported JSON city input');
+      }
+      return normalizedFromDocument(doc as Record<string, unknown>);
+    }
+    return parseObjCity(input, { upAxis: opts.objUpAxis ?? 'y' });
+  }
+  if (input instanceof ArrayBuffer || ArrayBuffer.isView(input)) {
+    return parseGltfCity(input);
+  }
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new Error('fitCitySpec: unsupported city input (expected a GeoJSON document, a layout object, OBJ text, a glTF document, or GLB bytes)');
+  }
+  return normalizedFromDocument(input as Record<string, unknown>);
+}
+
+export function fitCitySpec(
+  input: unknown,
+  opts: CityFitOptions = {},
+): CitySpec {
+  const parsed = fittedCity(normalizedFromInput(input, opts));
   const { footprints, streets, extentM } = parsed;
   if (footprints.length === 0) {
     throw new Error('fitCitySpec: no building footprints found');

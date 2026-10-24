@@ -1,0 +1,431 @@
+{
+ "asset": {
+  "version": "2.0",
+  "generator": "PPE synthetic fixture generator"
+ },
+ "scene": 0,
+ "scenes": [
+  {
+   "nodes": [
+    0,
+    1
+   ]
+  }
+ ],
+ "nodes": [
+  {
+   "name": "West district",
+   "translation": [
+    -90,
+    0,
+    0
+   ],
+   "children": [
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+   ]
+  },
+  {
+   "name": "East district",
+   "translation": [
+    90,
+    0,
+    0
+   ],
+   "children": [
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17
+   ]
+  },
+  {
+   "name": "Building 1",
+   "mesh": 0,
+   "translation": [
+    -90,
+    0,
+    -45
+   ],
+   "rotation": [
+    0,
+    -0.5226872289306592,
+    0,
+    0.8525245220595057
+   ],
+   "scale": [
+    34,
+    16,
+    20
+   ]
+  },
+  {
+   "name": "Building 2",
+   "mesh": 0,
+   "translation": [
+    -30,
+    0,
+    -45
+   ],
+   "rotation": [
+    0,
+    -0.5226872289306592,
+    0,
+    0.8525245220595057
+   ],
+   "scale": [
+    42,
+    30,
+    25
+   ]
+  },
+  {
+   "name": "Building 3",
+   "mesh": 0,
+   "translation": [
+    30,
+    0,
+    -45
+   ],
+   "rotation": [
+    0,
+    -0.5226872289306592,
+    0,
+    0.8525245220595057
+   ],
+   "scale": [
+    38,
+    44,
+    22
+   ]
+  },
+  {
+   "name": "Building 4",
+   "mesh": 0,
+   "translation": [
+    90,
+    0,
+    -45
+   ],
+   "rotation": [
+    0,
+    -0.5226872289306592,
+    0,
+    0.8525245220595057
+   ],
+   "scale": [
+    46,
+    24,
+    27
+   ]
+  },
+  {
+   "name": "Building 5",
+   "mesh": 0,
+   "translation": [
+    -90,
+    0,
+    45
+   ],
+   "rotation": [
+    0,
+    -0.5226872289306592,
+    0,
+    0.8525245220595057
+   ],
+   "scale": [
+    34,
+    19,
+    20
+   ]
+  },
+  {
+   "name": "Building 6",
+   "mesh": 0,
+   "translation": [
+    -30,
+    0,
+    45
+   ],
+   "rotation": [
+    0,
+    -0.5226872289306592,
+    0,
+    0.8525245220595057
+   ],
+   "scale": [
+    42,
+    33,
+    25
+   ]
+  },
+  {
+   "name": "Building 7",
+   "mesh": 0,
+   "translation": [
+    30,
+    0,
+    45
+   ],
+   "rotation": [
+    0,
+    -0.5226872289306592,
+    0,
+    0.8525245220595057
+   ],
+   "scale": [
+    38,
+    47,
+    22
+   ]
+  },
+  {
+   "name": "Building 8",
+   "mesh": 0,
+   "translation": [
+    90,
+    0,
+    45
+   ],
+   "rotation": [
+    0,
+    -0.5226872289306592,
+    0,
+    0.8525245220595057
+   ],
+   "scale": [
+    46,
+    27,
+    27
+   ]
+  },
+  {
+   "name": "Building 9",
+   "mesh": 0,
+   "translation": [
+    -90,
+    0,
+    -45
+   ],
+   "rotation": [
+    0,
+    -0.5226872289306592,
+    0,
+    0.8525245220595057
+   ],
+   "scale": [
+    34,
+    21,
+    20
+   ]
+  },
+  {
+   "name": "Building 10",
+   "mesh": 0,
+   "translation": [
+    -30,
+    0,
+    -45
+   ],
+   "rotation": [
+    0,
+    -0.5226872289306592,
+    0,
+    0.8525245220595057
+   ],
+   "scale": [
+    42,
+    35,
+    25
+   ]
+  },
+  {
+   "name": "Building 11",
+   "mesh": 0,
+   "translation": [
+    30,
+    0,
+    -45
+   ],
+   "rotation": [
+    0,
+    -0.5226872289306592,
+    0,
+    0.8525245220595057
+   ],
+   "scale": [
+    38,
+    49,
+    22
+   ]
+  },
+  {
+   "name": "Building 12",
+   "mesh": 0,
+   "translation": [
+    90,
+    0,
+    -45
+   ],
+   "rotation": [
+    0,
+    -0.5226872289306592,
+    0,
+    0.8525245220595057
+   ],
+   "scale": [
+    46,
+    29,
+    27
+   ]
+  },
+  {
+   "name": "Building 13",
+   "mesh": 0,
+   "translation": [
+    -90,
+    0,
+    45
+   ],
+   "rotation": [
+    0,
+    -0.5226872289306592,
+    0,
+    0.8525245220595057
+   ],
+   "scale": [
+    34,
+    24,
+    20
+   ]
+  },
+  {
+   "name": "Building 14",
+   "mesh": 0,
+   "translation": [
+    -30,
+    0,
+    45
+   ],
+   "rotation": [
+    0,
+    -0.5226872289306592,
+    0,
+    0.8525245220595057
+   ],
+   "scale": [
+    42,
+    38,
+    25
+   ]
+  },
+  {
+   "name": "Building 15",
+   "mesh": 0,
+   "translation": [
+    30,
+    0,
+    45
+   ],
+   "rotation": [
+    0,
+    -0.5226872289306592,
+    0,
+    0.8525245220595057
+   ],
+   "scale": [
+    38,
+    52,
+    22
+   ]
+  },
+  {
+   "name": "Building 16",
+   "mesh": 0,
+   "translation": [
+    90,
+    0,
+    45
+   ],
+   "rotation": [
+    0,
+    -0.5226872289306592,
+    0,
+    0.8525245220595057
+   ],
+   "scale": [
+    46,
+    32,
+    27
+   ]
+  }
+ ],
+ "meshes": [
+  {
+   "name": "Unit prism",
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 0
+     },
+     "indices": 1,
+     "mode": 4
+    }
+   ]
+  }
+ ],
+ "buffers": [
+  {
+   "byteLength": 168,
+   "uri": "data:application/octet-stream;base64,AAAAvwAAAAAAAAC/AAAAPwAAAAAAAAC/AAAAPwAAAAAAAAA/AAAAvwAAAAAAAAA/AAAAvwAAgD8AAAC/AAAAPwAAgD8AAAC/AAAAPwAAgD8AAAA/AAAAvwAAgD8AAAA/AAACAAEAAAADAAIABAAFAAYABAAGAAcAAAABAAUAAAAFAAQAAQACAAYAAQAGAAUAAgADAAcAAgAHAAYAAwAAAAQAAwAEAAcA"
+  }
+ ],
+ "bufferViews": [
+  {
+   "buffer": 0,
+   "byteOffset": 0,
+   "byteLength": 96,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 96,
+   "byteLength": 72,
+   "target": 34963
+  }
+ ],
+ "accessors": [
+  {
+   "bufferView": 0,
+   "componentType": 5126,
+   "count": 8,
+   "type": "VEC3",
+   "min": [
+    -0.5,
+    0,
+    -0.5
+   ],
+   "max": [
+    0.5,
+    1,
+    0.5
+   ]
+  },
+  {
+   "bufferView": 1,
+   "componentType": 5123,
+   "count": 36,
+   "type": "SCALAR"
+  }
+ ]
+}

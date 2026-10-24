@@ -1,7 +1,7 @@
 // demo/import.ts - "Inverse City Import": a real city file in,
 // only the math kept, a sibling city back out.
 //
-// The flow on this page is the v3.1.0 contract, exercised live:
+// The flow on this page is the v3.2.0 contract, exercised live:
 // fitCitySpec reads the uploaded file ONCE, here in the browser,
 // and returns a CitySpec (fitted distributions and structure
 // parameters). The file object is dropped the moment the fit
@@ -204,17 +204,10 @@ function keepSpec(spec: CitySpec, bytes: number | null): void {
 // ---------------------------------------------------------------------------
 // Conversion: the one read of the user's file.
 // ---------------------------------------------------------------------------
-async function convertText(text: string, name: string, bytes: number): Promise<void> {
-  let doc: unknown;
+async function convertData(data: unknown, name: string, bytes: number): Promise<void> {
   try {
-    doc = JSON.parse(text);
-  } catch {
-    setStatus('That file is not valid JSON, so there is nothing to fit. A GeoJSON export is JSON with footprint polygons.');
-    return;
-  }
-  try {
-    const spec = fitCitySpec(doc, { name });
-    // doc and text go out of scope here. Only the spec is kept.
+    const spec = fitCitySpec(data, { name });
+    // The source value goes out of scope here. Only the spec is kept.
     keepSpec(spec, bytes);
     setStatus(
       `Converted ${name}. The file is discarded; the CitySpec below is all that is kept, and the preview is a sibling regenerated from it.`,
@@ -224,10 +217,42 @@ async function convertText(text: string, name: string, bytes: number): Promise<v
   }
 }
 
+async function convertText(text: string, name: string, bytes: number): Promise<void> {
+  let doc: unknown;
+  try {
+    doc = JSON.parse(text);
+  } catch {
+    setStatus('That file is not valid JSON, so there is nothing to fit. A GeoJSON export is JSON with footprint polygons.');
+    return;
+  }
+  await convertData(doc, name, bytes);
+}
+
 async function convertFile(file: File): Promise<void> {
-  const text = await file.text();
-  const name = file.name.replace(/\.(geo)?json$/i, '') || 'Imported city';
-  await convertText(text, name, file.size);
+  const lower = file.name.toLowerCase();
+  const name =
+    file.name.replace(/\.(geojson|json|obj|gltf|glb)$/i, '') || 'Imported city';
+  try {
+    if (lower.endsWith('.glb')) {
+      await convertData(await file.arrayBuffer(), name, file.size);
+    } else if (lower.endsWith('.obj')) {
+      await convertData(await file.text(), name, file.size);
+    } else if (lower.endsWith('.gltf')) {
+      const text = await file.text();
+      let doc: unknown;
+      try {
+        doc = JSON.parse(text);
+      } catch {
+        setStatus('That glTF file is not valid JSON, so there is nothing to fit.');
+        return;
+      }
+      await convertData(doc, name, file.size);
+    } else {
+      await convertText(await file.text(), name, file.size);
+    }
+  } catch (err) {
+    setStatus(`Could not read that file: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 dropEl.onclick = () => fileEl.click();

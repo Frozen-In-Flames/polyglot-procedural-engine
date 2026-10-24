@@ -1,4 +1,4 @@
-# Inverse city import (v3.1.0)
+# Inverse city import (v3.2.0)
 
 `src/scene/city.ts` closes the zero-asset doctrine's last open
 side: user content. Until now the engine generated every world
@@ -9,13 +9,13 @@ it keeps the math and lets the asset go.
 ## The flow
 
 1. **Fit once.** `fitCitySpec(input, { name })` reads a city file
-   (GeoJSON building footprint polygons with a `height` property,
-   the shape an OpenStreetMap export produces, plus street
-   LineStrings when present; or the engine's own layout JSON,
-   `{ buildings: [{ x, z, w, d, height, angle? }], streets? }`)
-   and returns a `CitySpec`. Conversion is pure TypeScript; in
-   the demo it runs client-side, in the browser, and the file is
-   never uploaded anywhere.
+   and returns a `CitySpec`. GeoJSON, the engine's layout JSON,
+   OBJ, and self-contained glTF enter through separate format
+   doors, normalize to one intermediate list of footprint
+   polygons and heights (plus street lines when the format
+   carries them), and then pass through the same fit. Conversion
+   is pure TypeScript; in the demo it runs client-side, in the
+   browser, and the file is never uploaded anywhere.
 2. **Discard.** The spec is the only thing retained. It contains
    no source coordinate of any kind: no footprint polygon, no
    street polyline, no building position. The suite proves this
@@ -34,6 +34,39 @@ it keeps the math and lets the asset go.
    that is none of the sources and carries their shared
    statistical DNA. Blends read specs only; by then the source
    files are gone, which is the point.
+
+## The format doors
+
+All doors produce `NormalizedCityInput`: buildings as footprint
+polygons in meters on the ground plane, each with a height, and
+streets as centerline points with a width. `fitCitySpec`
+consumes that form only. The public parsers `parseObjCity` and
+`parseGltfCity` expose the same normalization for callers that
+need to inspect it before fitting.
+
+| Door | Building boundary | Footprint rule | Height rule | Streets |
+| --- | --- | --- | --- | --- |
+| GeoJSON | One Polygon or MultiPolygon part | The source polygon, projected to a local tangent plane | `height`, else `building:levels` times 3.2 m, else 10 m | LineString and MultiLineString parts |
+| Layout JSON | One entry in `buildings` | The rectangle generated from `x`, `z`, `w`, `d`, and `angle` | The entry's `height`, else 10 m | Optional `streets` point lists |
+| OBJ | One `o` or `g` group with faces; an ungrouped file is one building | Convex hull of the group's face vertices projected onto the ground plane | Maximum minus minimum along the up axis | None |
+| glTF | One scene node carrying a mesh | Convex hull of the mesh position vertices, after the full scene graph transform, projected onto the ground plane | Maximum minus minimum Y after the transform | None |
+
+OBJ details: positive and negative face indices are both
+resolved. The default up axis is Y, the format's usual
+convention. A Z-up OBJ can be fitted through the API with
+`fitCitySpec(text, { objUpAxis: 'z' })`; the importer does not
+guess. Face association defines group membership, so vertices
+that no face references do not create buildings.
+
+glTF details: the importer accepts JSON with an embedded data
+URI buffer and the binary GLB container. Node translation,
+rotation, scale, explicit matrices, and children are composed
+into a world transform before any vertex is measured. A mesh
+reused by several nodes is one building per node instance. A
+glTF JSON file whose buffer points to an external file is
+rejected with a plain-language error: one file dropped into a
+page cannot carry a sidecar, so the supported single-file
+forms are embedded glTF and GLB.
 
 ## What a CitySpec contains
 
@@ -74,8 +107,27 @@ tolerance. Determinism digest for fixture A at seed 31007:
 `a8137334c5b7129c`; seed 31008 gives a different city that still
 passes the oracle.
 
-Negative controls, all in `test/city-import.test.ts` and all
-required to fail loudly if the machinery goes soft: a corrupted
+The mesh fixtures land on the same oracle. The 24-building OBJ
+fixture fits to its known area mean 913.3 square meters and
+height mean 37.2 m, then regenerates at area, height, and
+orientation L1 0.000. The 16-building glTF fixture fits to its
+known area mean 952.0 square meters and height mean 32.5 m,
+then regenerates at the same three L1 values of 0.000. Those
+zeros are expected here, not rounded up from small errors: the
+fixtures are rectangular prisms, their values land in the fitted
+histogram bins, and stratified regeneration draws the same bin
+counts. The embedded glTF and GLB containers fit to identical
+specs. The cross-format control authors one 12-building city in
+both GeoJSON and OBJ: counts are exact, height means agree
+exactly, and area means differ by 0.000029 percent, inside the
+stated 1 percent allowance for the GeoJSON tangent projection
+and coordinate rounding. An OBJ spec blended with GeoJSON
+fixture A regenerates and passes the full statistics oracle at
+area L1 0.048, height L1 0.062, and orientation L1 0.065.
+
+Negative controls, in `test/city-import.test.ts` and
+`test/city-mesh-import.test.ts`, all required to fail loudly if
+the machinery goes soft: a corrupted
 spec (height weights collapsed to the top bin) fails the oracle
 naming height; a halved building count fails naming count; a
 zeroed histogram is refused by `buildCity`; a spatially shuffled
@@ -86,7 +138,13 @@ different bins) and regenerates with a different dominant
 orientation; blending the shuffled spec shifts the blend's
 orientation by 1.400 L1; empty,
 streets-only, null, and zero-area inputs are rejected with
-plain-language errors.
+plain-language errors. For the mesh doors: rotating every OBJ
+vertex by 90 degrees moves the fitted orientation by at least
+0.5 L1 and changes the dominant bin; collapsing every OBJ
+height to one level is rejected with an error naming height;
+empty text, text garbage with an OBJ name, and a glTF file
+pointing at an external buffer are each rejected plainly; and
+the no-source-geometry retention walk runs on both mesh specs.
 
 ## Fidelity limits, stated plainly
 
@@ -98,6 +156,18 @@ stands where it stood. Further honest limits:
 - Footprint orientation and aspect come from a PCA on each
   polygon's vertices: exact for the rectangular stock that
   dominates real cities, approximate for L-shaped plans.
+- Mesh footprints are convex hulls. A concave mesh building is
+  fitted as its convex outline, and overhangs do not reduce the
+  ground footprint. This is the honest mesh rule for this
+  release: the hull is computed from the real projected
+  vertices, not from a bounding box, but concavity is not kept.
+- OBJ grouping is the building boundary. An ungrouped OBJ is
+  one building, and the importer does not classify ground
+  planes, props, or other non-building groups separately.
+- OBJ is Y-up unless the API caller selects Z-up. glTF is
+  Y-up by specification. Neither mesh format supplies the
+  street structure the GeoJSON door can carry, so mesh specs
+  record streets as absent.
 - Street spacing is a grid-model estimate from total street
   length (L/A = 2/s), not a measured block survey. On fixture A
   (true pitch 84 m) the estimator reads 88.6 m.
@@ -123,3 +193,10 @@ attribution; the import path is identical either way, because it
 reads the same GeoJSON shape a real export produces. The demo's
 bundled sample (`demo/public/sample-city.geojson`) is fixture A
 copied so a visitor can try the page without a file.
+
+The mesh fixtures (`mesh-city.obj`, `mesh-city.gltf`,
+`mesh-city.glb`, `cross-city.obj`, and `cross-city.geojson`)
+are generated by `test/fixtures/gen-city-mesh-fixtures.mjs`
+from the explicit block models in that script, with the known
+building dimensions recorded in `mesh-models.json`. They are
+synthetic fixtures made for this suite, not converted assets.
