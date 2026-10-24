@@ -24,7 +24,7 @@
 // Gameplay planes: a PlaneStack is an ordered stack of 2.5D layers the
 // player inhabits and hops between. Hopping is a depth translation of the
 // player, never a camera trick.
-import type { Vec2, Vec3 } from '../math/vec.js';
+import { sub3, dot3, cross3, lengthSquared3, type Vec2, type Vec3 } from '../math/vec.js';
 import type { CharacterState } from '../game/character.js';
 import { finiteJacobian } from '../inverse/conditioning.js';
 import { irlsGnFit } from '../inverse/robust.js';
@@ -178,21 +178,15 @@ export const MARCH_MAX_DIST = 100;
 
 const MISS: LayerHit = { depth: Infinity, color: [0, 0, 0], kind: 'none', layer: -1 };
 
-function sub3(a: Vec3, b: Vec3): Vec3 {
-  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-}
-function dot3(a: Vec3, b: Vec3): number {
-  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-}
-function cross3(a: Vec3, b: Vec3): Vec3 {
-  return [
-    a[1] * b[2] - a[2] * b[1],
-    a[2] * b[0] - a[0] * b[2],
-    a[0] * b[1] - a[1] * b[0],
-  ];
-}
+// sub3/dot3/cross3 come from the canonical vecmath core
+// (src/math/vec.ts, v3.3.0); the private copies that used to live
+// here were bit-identical and are gone. norm3 stays a local wrapper
+// ON the core: it divides component-wise (a[i] / l) where the core's
+// norm3 multiplies by the reciprocal, and the two can differ by an
+// ulp - this module's outputs are pinned, so its rounding path is
+// not swapped under it.
 function norm3(a: Vec3): Vec3 {
-  const l = Math.sqrt(dot3(a, a)) || 1;
+  const l = Math.sqrt(lengthSquared3(a)) || 1;
   return [a[0] / l, a[1] / l, a[2] / l];
 }
 

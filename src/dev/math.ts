@@ -10,19 +10,18 @@
 // from the engine to the games built on it.
 import { pcgHash32, quinticFade, sinPoly } from '../math/determinism.js';
 
-/** Clamp x into [lo, hi]. */
-export function clamp(x: number, lo: number, hi: number): number {
-  return x < lo ? lo : x > hi ? hi : x;
-}
+// clamp and lerp are two of the eight canonical vecmath primitives;
+// since v3.3.0 they live in the core (src/math/vec.ts) and are
+// re-exported here so the dev surface keeps its exact shape. The
+// core's clamp is the canonical equation, max(min(x, hi), lo) -
+// identical to
+// the ternary this module used to carry for every lo <= hi; the
+// core's lerp is the same a + (b - a) * t, t unclamped.
+export { clamp, lerp } from '../math/vec.js';
 
 /** Clamp x into [0, 1]. */
 export function clamp01(x: number): number {
   return x < 0 ? 0 : x > 1 ? 1 : x;
-}
-
-/** Linear interpolation: a at t = 0, b at t = 1. t is not clamped. */
-export function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
 }
 
 /** Map x from [inLo, inHi] onto [outLo, outHi], unclamped. */

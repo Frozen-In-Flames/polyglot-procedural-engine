@@ -22,7 +22,7 @@
 // All techniques are classical public mathematics; see
 // docs/methods-provenance.md.
 
-import type { Vec3 } from '../math/vec.js';
+import { cross3, type Vec3 } from '../math/vec.js';
 
 /** Field and its derivatives, supplied by the caller. */
 export interface FieldDerivs {
@@ -135,14 +135,6 @@ export interface SilhouetteTrackOpts {
   h?: number;
 }
 
-function crossInto(a: Vec3, b: Vec3): Vec3 {
-  return [
-    a[1] * b[2] - a[2] * b[1],
-    a[2] * b[0] - a[0] * b[2],
-    a[0] * b[1] - a[1] * b[0],
-  ];
-}
-
 /** Solve a 3x3 linear system by Gaussian elimination with pivoting. */
 function solve3(A: number[][], b: number[]): Vec3 | null {
   const M = A.map((row, i) => [...row, b[i]]);
@@ -215,7 +207,7 @@ export function silhouetteNormalSpeed3D(
   // Contour tangent at the seed; degenerate unless the seed is near a
   // silhouette (grad f perpendicular to d).
   const g0 = field.grad(p, theta);
-  const tcRaw = crossInto(g0, dn);
+  const tcRaw = cross3(g0, dn);
   const tl = Math.hypot(tcRaw[0], tcRaw[1], tcRaw[2]);
   if (tl < 1e-8) return NaN;
   const tc: Vec3 = [tcRaw[0] / tl, tcRaw[1] / tl, tcRaw[2] / tl];
@@ -223,7 +215,7 @@ export function silhouetteNormalSpeed3D(
   const pBase = trackSilhouette(field, p, dn, theta, tc, p, newtonIters, newtonTol);
   if (!pBase) return NaN;
   // Outward contour normal in the image plane.
-  const nbRaw = crossInto(dn, tc);
+  const nbRaw = cross3(dn, tc);
   const nl = Math.hypot(nbRaw[0], nbRaw[1], nbRaw[2]) || 1;
   let nb: Vec3 = [nbRaw[0] / nl, nbRaw[1] / nl, nbRaw[2] / nl];
   const gb = field.grad(pBase, theta);

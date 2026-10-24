@@ -3,6 +3,54 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [3.3.0] - The vecmath core: the classic eight, consolidated (2026-10-24)
+
+**Why.** Eight formulas are the working vocabulary of every engine
+mechanic - dot product, normalize, distance, reflection, clamp,
+vector length, lerp, cross product. The engine used all eight but
+carried them scattered: a canonical copy in `src/math/vec.ts`,
+private re-implementations in four other modules, distance with no
+canonical home, reflection with no implementation at all. Scattered
+math drifts; each private copy is a place for a formula to quietly
+diverge. This release makes the eight one tested, cross-language
+core that the rest of the engine imports. Reference:
+`docs/vector-math.md`.
+
+**What.** `src/math/vec.ts` is now the canonical vecmath core:
+`dot3`, `cross3`, `len3`, `norm3` and `lerp3` (already there) are
+joined by `lengthSquared3`, `distance3`, `reflect3`, scalar
+`clamp` and `lerp`, and the vector clamps `clamp3`/`clamp3v`.
+Contracts are stated in the module header and pinned by tests:
+the zero vector normalizes to itself (the engine's long-standing
+convention, documented rather than changed), `reflect3` takes a
+unit normal and never silently renormalizes, and lerp does not
+clamp `t` - extrapolation is the documented behavior. Private
+copies were deleted and their call sites rewired to the core where
+the arithmetic was bit-identical: dot/cross/sub in
+`src/scene/layers.ts`, dot in `src/inverse/forward.ts`, cross/dot
+in `src/physics/collide.ts`, cross in `src/inverse/geograd.ts`,
+distance in `src/audio/spatial.ts`, and scalar clamp/lerp on the
+dev surface (`src/dev/math.ts` now re-exports the core). Sites on
+a deliberately different rounding path (the division-form
+normalize wrapper in `layers.ts`, the exact-path normalize in
+`src/game/character.ts`, the `Math.hypot` paths in
+`src/math/normals.ts` and `src/xr/camera.ts`, the foundry helpers
+in `python/xrgen/geometry.py`) were left untouched and are
+itemized in `docs/vector-math.md`. New Python oracle port:
+`python/xrgen/vecmath.py`, mirroring the core operation for
+operation.
+
+**Measured.** New identity suites `test/vecmath.test.ts` (19
+tests) and `python/test/test_vecmath.py` (15 tests) run the same
+fixed battery - hand-worked dot, cross, squared length and
+distance values - through both languages, with negative controls:
+dot against a negated vector flips sign, cross against swapped
+operands negates, and a non-unit normal provably breaks the
+reflection involution. Totals: TypeScript 659 -> 678 tests, all
+passing; Python 91 -> 106 tests, all passing. Every pre-existing
+suite passes unmodified - zero pinned values changed - and the
+full project build (`tsc`) is clean.
+
 ## [3.2.0] - OBJ and glTF city import (2026-10-23)
 
 **Why.** v3.1.0 proved inverse city import with GeoJSON, but

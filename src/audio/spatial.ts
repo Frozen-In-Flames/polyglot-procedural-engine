@@ -5,7 +5,7 @@
 // reverb zones (generated IRs, cached per seed), occlusion from a
 // host-supplied raycast (no new physics deps), and a 32-voice budget with
 // (loudness x proximity) priority stealing. Zero asset dependence throughout.
-import type { Vec3 } from '../math/vec.js';
+import { distance3, type Vec3 } from '../math/vec.js';
 import { renderSfx, renderIR, type SfxVoiceKind } from './synth.js';
 
 /** Generative music driver seam. The pmve package implements this post-v1;
@@ -139,11 +139,6 @@ interface Emitter {
 interface ActiveVoice {
   stop: () => void;
   priority: number;
-}
-
-function dist3(a: Vec3, b: Vec3): number {
-  const dx = a[0] - b[0], dy = a[1] - b[1], dz = a[2] - b[2];
-  return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
 export class SpatialAudio {
@@ -355,7 +350,7 @@ export class SpatialAudio {
     for (const [zoneId, zone] of this.zones) {
       const send = e.sends.get(zoneId);
       if (!send) continue;
-      const inside = dist3(pos, zone.spec.center) <= zone.spec.radius ? 1 : 0;
+      const inside = distance3(pos, zone.spec.center) <= zone.spec.radius ? 1 : 0;
       send.gain.setTargetAtTime(inside, t, 0.167); // ~0.5 s crossfade
     }
   }
@@ -497,7 +492,7 @@ export class SpatialAudio {
     p.positionY.setValueAtTime(spec.pos[1], t);
     p.positionZ.setValueAtTime(spec.pos[2], t);
     src.connect(g); g.connect(p); p.connect(this.master);
-    const dist = dist3(spec.pos, this.listenerPos);
+    const dist = distance3(spec.pos, this.listenerPos);
     const priority = gain * (1 / (1 + dist)); // loudness x proximity
     // Steal when over budget: drop the lowest-priority active voice.
     while (this.activeVoices.size >= this.voiceBudget) {
