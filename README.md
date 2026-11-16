@@ -9,6 +9,14 @@ zero asset dependence.
 > polyglot core (TypeScript, C++, Python, C#, Swift, Kotlin) where every visual
 > and sound is procedural, with zero asset files.
 
+## Live demonstrations
+
+All demonstrations run in the browser; no installation is required.
+
+- [Engine overview](https://frozen-in-flames.github.io/polyglot-procedural-engine/): the demonstration index and entry point.
+- [Living world](https://frozen-in-flames.github.io/polyglot-procedural-engine/living.html): a playable procedural environment generated at runtime.
+- [Import](https://frozen-in-flames.github.io/polyglot-procedural-engine/import.html): GeoJSON city data and OBJ/glTF models converted into the engine's procedural representation.
+
 ## Current state (v1.4.1, October 2026)
 
 The V10 "math-first" series is shipped, v1.0.0 through v1.4.1:
