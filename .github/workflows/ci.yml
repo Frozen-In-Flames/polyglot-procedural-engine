@@ -1,0 +1,28 @@
+# Proposed for Frozen-In-Flames/polyglot-procedural-engine at .github/workflows/ci.yml
+# Commands are taken from README.md (Verify section) and package.json:
+#   README: "npm install", "npm test" (full identity suite), "npm run build" (type-check)
+#   package.json scripts.pretest compiles the test bundle with tsc;
+#   npm runs pretest automatically before test.
+#   package.json scripts.test = node --test dist-test/test/*.test.js
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install dev dependencies (typescript, vite)
+        run: npm install
+      - name: Type-check the TypeScript core
+        run: npm run build
+      - name: Identity suite (pretest compiles, then node --test)
+        run: npm test
