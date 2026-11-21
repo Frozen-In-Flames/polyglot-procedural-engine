@@ -16,6 +16,7 @@ All demonstrations run in the browser; no installation is required.
 - [Engine overview](https://frozen-in-flames.github.io/polyglot-procedural-engine/): the demonstration index and entry point.
 - [Living world](https://frozen-in-flames.github.io/polyglot-procedural-engine/living.html): a playable procedural environment generated at runtime.
 - [Import](https://frozen-in-flames.github.io/polyglot-procedural-engine/import.html): GeoJSON city data and OBJ/glTF models converted into the engine's procedural representation.
+- [DeadRamp Building](https://frozen-in-flames.github.io/polyglot-procedural-engine/deadramp.html): one build record from the DeadRamp Base catalog, converted by the same city converter and regenerated as a procedural district.
 
 ## Current state (v1.4.1, October 2026)
 

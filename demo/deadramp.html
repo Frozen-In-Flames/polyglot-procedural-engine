@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>DeadRamp Building - Polyglot Procedural Engine demo</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #05070d; font-family: system-ui, sans-serif; }
+      #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+      .panel {
+        position: fixed; z-index: 10; background: rgba(10, 14, 24, 0.86);
+        border: 1px solid #1e293b; border-radius: 12px; padding: 12px 14px;
+        color: #e2e8f0; backdrop-filter: blur(6px);
+      }
+      #hud { top: 12px; left: 12px; max-width: 360px; }
+      #hud h1 { margin: 0 0 2px; font-size: 15px; font-weight: 800; letter-spacing: 0.04em; }
+      #build-title { font-size: 12px; font-weight: 700; color: #67e8f9; margin-bottom: 6px; }
+      #build-meta, #status { font-size: 11px; color: #94a3b8; line-height: 1.5; }
+      #stats { font-size: 11px; color: #e2e8f0; margin: 8px 0 0; white-space: pre-wrap; }
+      #hud a { color: #67e8f9; }
+    </style>
+  </head>
+  <body>
+    <canvas id="scene"></canvas>
+    <div class="panel" id="hud">
+      <h1>DEADRAMP BUILDING</h1>
+      <div id="build-title">Loading the exported build record.</div>
+      <div id="build-meta"></div>
+      <pre id="stats"></pre>
+      <div id="status"></div>
+      <p style="margin-top:8px"><a href="./index.html">First Light demo</a> · <a href="./v10.html">V10 demo</a> · <a href="./living.html">Living World demo</a> · <a href="./import.html">Import demo</a></p>
+    </div>
+    <script type="module" src="./deadramp.ts"></script>
+  </body>
+</html>

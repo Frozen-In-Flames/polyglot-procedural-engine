@@ -14,6 +14,7 @@ export default defineConfig({
         v10: 'demo/v10.html',
         living: 'demo/living.html',
         import: 'demo/import.html',
+        deadramp: 'demo/deadramp.html',
       },
     },
   },

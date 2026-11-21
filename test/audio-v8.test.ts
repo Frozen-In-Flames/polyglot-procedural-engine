@@ -264,13 +264,18 @@ test('conductor: ATTUNE_THRESHOLDS are the six corrected thresholds', async () =
 test('conductor: thresholds stay in sync with the game level-ups', async () => {
   const { ATTUNE_THRESHOLDS } = await conductor();
   // The heard levels must match the game's own level-ups: import the game's
-  // source directly (node type-strips it; shared.ts is pure data).
-  const gameUrl = new URL('../../games/first-light/shared.ts', import.meta.url);
+  // shared constants. Root cause fix (2026-11-21): this test imported the
+  // raw TypeScript source (shared.ts), which only loads where the runtime
+  // type-strips .ts files (Node 22.6+ with a flag, Node 23+ by default);
+  // the CI runtime (Node 20) cannot load it from the compiled test bundle.
+  // The pretest build now also compiles games/first-light/shared.ts into
+  // the bundle, and this test imports the compiled module.
+  const gameUrl = new URL('../../games/first-light/shared.js', import.meta.url);
   let game: any;
   try {
     game = await import(gameUrl.href);
   } catch (e) {
-    throw new Error(`cannot import games/first-light/shared.ts (${(e as Error).message})`);
+    throw new Error(`cannot import games/first-light/shared.js (${(e as Error).message})`);
   }
   assert.deepEqual(
     [...ATTUNE_THRESHOLDS],

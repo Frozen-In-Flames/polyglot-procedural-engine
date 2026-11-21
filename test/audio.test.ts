@@ -23,9 +23,15 @@ test('validateScore accepts a good score', () => {
 
 test('validateScore accepts the real generated scores', async () => {
   const { readFileSync } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+  // Root cause fix (2026-11-21): this test read a hardcoded absolute path
+  // from the authoring machine under the repository's former name
+  // (xr-engine). The generated scores live in this repository at
+  // demo/public/gen/, so the path is now resolved relative to this test
+  // file (the compiled bundle mirrors the source layout under dist-test/).
   for (const f of ['python-score.json', 'csharp-score.json']) {
     const doc = validateScore(JSON.parse(readFileSync(
-      `/home/hatch/workspace/xr-engine/demo/public/gen/${f}`, 'utf8')));
+      fileURLToPath(new URL(`../../demo/public/gen/${f}`, import.meta.url)), 'utf8')));
     assert.ok(doc.events.length > 0, f);
     assert.ok(doc.loop_dur > 0, f);
   }

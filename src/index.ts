@@ -83,3 +83,5 @@ export type { RayTelemetry, FrameTelemetry } from './render/telemetry.js';
 export * as dev from './dev/index.js';
 export { fitCitySpec, parseObjCity, parseGltfCity, blendCitySpecs, buildCity, measureCity, checkCityStats, cityDigest, cityLayers, cityToGrid, validateCitySpec, specMean, CITY_SPEC_VERSION, CITY_RADIAL_RINGS, CITY_AREA_EDGES, CITY_ASPECT_EDGES, CITY_HEIGHT_EDGES, CITY_ORIENTATION_BINS, CITY_DEFAULT_TOLERANCES, CITY_DEFAULT_HEIGHT_M, CITY_METERS_PER_LEVEL } from './scene/city.js';
 export type { CitySpec, HistogramFit, BuiltCity, BuiltBuilding, CityStats, CityCheck, CityTolerances, CityBuildingInput, CityStreetInput, NormalizedCityInput, CityFitOptions, MeshUpAxis } from './scene/city.js';
+export { layoutFromDeadRampBuild, DEADRAMP_FOOTPRINT_SCALE, DEADRAMP_HEIGHT_SCALE, DEADRAMP_GRID_PITCH_M } from './scene/deadramp.js';
+export type { DeadRampBuildRecord, DeadRampManifestEntry, LayoutBuilding } from './scene/deadramp.js';
