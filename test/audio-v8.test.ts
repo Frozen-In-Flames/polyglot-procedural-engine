@@ -269,8 +269,10 @@ test('conductor: thresholds stay in sync with the game level-ups', async () => {
   // type-strips .ts files (Node 22.6+ with a flag, Node 23+ by default);
   // the CI runtime (Node 20) cannot load it from the compiled test bundle.
   // The pretest build now also compiles games/first-light/shared.ts into
-  // the bundle, and this test imports the compiled module.
-  const gameUrl = new URL('../../games/first-light/shared.js', import.meta.url);
+  // the test bundle (dist-test/games/first-light/shared.js, mirroring the
+  // source layout under dist-test/), and this test imports the compiled
+  // module from the bundle.
+  const gameUrl = new URL('../../dist-test/games/first-light/shared.js', import.meta.url);
   let game: any;
   try {
     game = await import(gameUrl.href);
