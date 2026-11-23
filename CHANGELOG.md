@@ -3,6 +3,71 @@
 All notable changes to the Polyglot Procedural Engine (PPE). The live demo at
 https://frozen-in-flames.github.io/polyglot-procedural-engine/ tracks the latest release.
 
+## [3.4.0] - Director mode: takes of a seeded world (2026-11-23)
+
+**Why.** The engine is fully procedural and deterministic: a world
+is a seed, and every system in it (the character tick, the
+emission field, the watcher) evolves as a pure function of its
+inputs. v3.0.0's campaign composed those systems into the Living
+World; game/replay.ts already proved dense per-tick input replay
+bit-identical. What was missing is the production layer on top:
+virtual production, where a performance is directed live -
+camera, light, sound, action adjustable while the take runs - and
+then replayed, re-performed in part, and shared. Because the
+world is deterministic, a take does not need to be a video. It is
+the seed plus a sparse track sheet, and replaying the sheet over
+a fresh world reproduces the performance exactly, digest for
+digest. Reactor established the same principle for music visuals
+(deterministic, seed-driven, the file is the performance); this
+release brings it to the engine's worlds.
+
+**What.** New module `src/director/`:
+
+- `take.ts` - the take format (`ppe-take` v1): seed, tick rate,
+  duration, and events on five channels grounded in what the
+  composed world exposes. Camera (keyframed position/yaw/pitch)
+  and light (keyframed emission offset) interpolate; emission
+  (on/off) and action (held character input, the sparse
+  counterpart of replay.ts's dense log) step; cue (a named
+  moment) fires once at its tick. Validation is total and
+  coercion-free: malformed values, unknown channels, duplicate
+  (tick, channel) events, and non-finite numbers are rejected.
+- `evaluate.ts` - the pure evaluator. `evaluate(take, tick)` is a
+  function of the take and the tick only, so any host that steps
+  a world under it gets the same performance. Cue windows are
+  (from, to], so playback fires each cue exactly once.
+- `recorder.ts` - writes a take by performing it: per-tick
+  sampling with per-channel epsilon (a still camera writes one
+  keyframe, not sixty), step channels on change, cues on demand.
+  `punchIn` truncates one channel's scripted future so a live
+  performance can be written over a replay in progress.
+- `player.ts` - a playhead only: fixed-step advance at the
+  take's tick rate, seek, and end clamping. It never touches a
+  world; applying state is the host's job.
+
+New demo page `director.html`: the Living World with Record,
+Replay, punch-in on all four performable channels, cue marks
+with a synth blip, and take save/load as JSON. The panel shows
+the world digest at the end of a recording and at the end of its
+replay; for an unedited take they are the same string.
+
+**Measured.** New suite `test/director.test.ts` (13 tests):
+format round-trip and rejection battery; hand-computed
+interpolation midpoints; the determinism oracle - two fresh
+living worlds stepped 600 ticks under one sheet digest
+identically at ticks 200, 400, and 600; negative controls - one
+mutated action event moves the final world digest, one mutated
+light event moves the evaluated light and the world's emission
+center, evaluator results mutated by the caller do not reach
+back into the take. Totals: TypeScript 681 -> 694 tests, all
+passing (the base includes the CI, conductor-sync, and
+DeadRamp Building work that landed on main ahead of this
+release); Python 106 tests, unchanged, all passing. The full
+project build (`tsc`) is clean, and the shipped demo was
+verified end to end in a browser: a take recorded live in the
+page (8 events over 18 ticks at sandbox frame rates) replayed
+to the identical digest.
+
 ## [3.3.0] - The vecmath core: the classic eight, consolidated (2026-10-24)
 
 **Why.** Eight formulas are the working vocabulary of every engine
