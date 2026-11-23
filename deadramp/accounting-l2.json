@@ -1,0 +1,95 @@
+{
+ "source": "DeadRamp Base catalog (Frozen-In-Flames/deadramp-base, data/base-catalog.json), build record exported verbatim in the fields below",
+ "groupDir": "accounting-l2",
+ "title": "Accounting L2 \u2014 merged build (Operation DeadRamp, Phase 2, Group 5)",
+ "summary": "This is the merged, clean-room implementation of the Accounting L2 sibling group: 21 forks from the FedRAMP Marketplace that share the same function (Accounting) and the same trust tier (CMMC L2, equivalent to FedRAMP Moderate), built as one open-source service per the group's union spec, UNION-SPEC.md.",
+ "package": "accounting",
+ "modules": [
+  {
+   "path": "groups/accounting-l2/src/accounting/__init__.py",
+   "doc": "Accounting: a clean-room, standard-library-only accounting service."
+  },
+  {
+   "path": "groups/accounting-l2/src/accounting/__main__.py",
+   "doc": "Command-line entry point: ``python -m accounting serve ...``."
+  },
+  {
+   "path": "groups/accounting-l2/src/accounting/access.py",
+   "doc": "Role-based access control hooks."
+  },
+  {
+   "path": "groups/accounting-l2/src/accounting/audit.py",
+   "doc": "Append-only audit log with optional JSONL persistence."
+  },
+  {
+   "path": "groups/accounting-l2/src/accounting/errors.py",
+   "doc": "Error types for the accounting package."
+  },
+  {
+   "path": "groups/accounting-l2/src/accounting/extensions.py",
+   "doc": "Final GAPS batch extensions for the Accounting L2 merged build."
+  },
+  {
+   "path": "groups/accounting-l2/src/accounting/service.py",
+   "doc": "HTTP service exposing the accounting functions over a JSON REST API."
+  },
+  {
+   "path": "groups/accounting-l2/src/accounting/store.py",
+   "doc": "Accounting store: books, chart of accounts, double-entry journal,"
+  }
+ ],
+ "manifest": [
+  {
+   "path": "groups/accounting-l2/src/accounting/__init__.py",
+   "bytes": 124,
+   "sha256": "c1b0e6f18f2dbc4df102d05dac7970a5503bf9ec5d9b3425c5b0633b763b3ef5"
+  },
+  {
+   "path": "groups/accounting-l2/src/accounting/__main__.py",
+   "bytes": 2474,
+   "sha256": "fab67c941689b05bbf2d284e2ff8b8751092d3f573d257051821dae56bf6f24f"
+  },
+  {
+   "path": "groups/accounting-l2/src/accounting/access.py",
+   "bytes": 2391,
+   "sha256": "711542d2538d6eb947dc172fbafb46551a0884d24c05328f395fee8fbe171c83"
+  },
+  {
+   "path": "groups/accounting-l2/src/accounting/audit.py",
+   "bytes": 2592,
+   "sha256": "e8a1e7d2e4848c268ccd923990081e7eebf5630a6259bc99a65456d3d9929b1e"
+  },
+  {
+   "path": "groups/accounting-l2/src/accounting/errors.py",
+   "bytes": 688,
+   "sha256": "bb90f2a4c86e107b5a69ca8ea75d97fda29f3ded03683c47a8b000ac9bd6f409"
+  },
+  {
+   "path": "groups/accounting-l2/src/accounting/extensions.py",
+   "bytes": 36314,
+   "sha256": "16d0548e59aadfc7952606c2141dee1abb6d0f5b0f8d3f833f0b6d4667ab185f"
+  },
+  {
+   "path": "groups/accounting-l2/src/accounting/service.py",
+   "bytes": 22372,
+   "sha256": "79ee7de765262ee4f7c23fe7147ad2a3c5f7ce012a4d0ebe648e995513c980f6"
+  },
+  {
+   "path": "groups/accounting-l2/src/accounting/store.py",
+   "bytes": 52673,
+   "sha256": "fb7eff3d22b40f2f0885f7b02650f1a0bba3b4d346ff2493d3a1af67751c2274"
+  }
+ ],
+ "http": {
+  "routes": [
+   "GET /audit",
+   "GET /health"
+  ],
+  "operationsTotal": 81,
+  "resourcesTotal": 1
+ },
+ "testFiles": 13,
+ "testCount": 246,
+ "specCount": 21,
+ "launchMode": "live"
+}
